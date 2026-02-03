@@ -186,6 +186,7 @@ ProtoPirateApp* protopirate_app_alloc() {
 
     // Mark as not initialized
     app->radio_initialized = false;
+    app->decoder_initialized = false;
 
     LOG_HEAP("App alloc complete (radio deferred)");
 
@@ -196,6 +197,47 @@ ProtoPirateApp* protopirate_app_alloc() {
 bool protopirate_radio_init(ProtoPirateApp* app) {
     if(app->radio_initialized) {
         FURI_LOG_D(TAG, "Radio already initialized");
+        return true;
+    }
+    if(app->decoder_initialized) {
+        LOG_HEAP("Radio with decoder init start");
+        app->txrx->worker = subghz_worker_alloc();
+        LOG_HEAP("After worker alloc");
+        // Initialize SubGhz devices
+        subghz_devices_init();
+
+        // Try external CC1101 first, fallback to internal
+        app->txrx->radio_device =
+            radio_device_loader_set(NULL, SubGhzRadioDeviceTypeExternalCC1101);
+
+        if(!app->txrx->radio_device) {
+            FURI_LOG_E(TAG, "Failed to initialize any radio device!");
+            return false;
+        }
+
+#ifndef REMOVE_LOGS
+        const char* device_name = subghz_devices_get_name(app->txrx->radio_device);
+        bool is_external = device_name && strstr(device_name, "ext");
+        FURI_LOG_I(
+            TAG,
+            "Radio device initialized: %s (%s)",
+            device_name ? device_name : "unknown",
+            is_external ? "external" : "internal");
+#endif
+
+        subghz_devices_reset(app->txrx->radio_device);
+        subghz_devices_idle(app->txrx->radio_device);
+
+        // Set up worker callbacks
+        subghz_worker_set_overrun_callback(
+            app->txrx->worker, (SubGhzWorkerOverrunCallback)subghz_receiver_reset);
+        subghz_worker_set_pair_callback(
+            app->txrx->worker, (SubGhzWorkerPairCallback)subghz_receiver_decode);
+        subghz_worker_set_context(app->txrx->worker, app->txrx->receiver);
+
+        app->radio_initialized = true;
+        LOG_HEAP("Radio with decoder init complete");
+
         return true;
     }
 
@@ -271,7 +313,7 @@ bool protopirate_radio_init(ProtoPirateApp* app) {
 }
 
 bool protopirate_decoder_init(ProtoPirateApp* app) {
-    if(app->radio_initialized) {
+    if(app->decoder_initialized) {
         FURI_LOG_D(TAG, "Decoder already initialized");
         return true;
     }
@@ -303,9 +345,35 @@ bool protopirate_decoder_init(ProtoPirateApp* app) {
     subghz_receiver_set_filter(app->txrx->receiver, SubGhzProtocolFlag_Decodable);
 
     app->txrx->radio_device = NULL;
-    app->radio_initialized = true;
+    app->decoder_initialized = true;
 
     LOG_HEAP("Decoder init complete");
+
+    return true;
+}
+
+bool protopirate_decoder_deinit(ProtoPirateApp* app) {
+    if(!app->decoder_initialized) {
+        FURI_LOG_D(TAG, "Decoder was not initialized");
+        return true;
+    }
+
+    LOG_HEAP("Decoder de init start");
+
+    subghz_receiver_free(app->txrx->receiver);
+    app->txrx->receiver = NULL;
+
+    subghz_environment_free(app->txrx->environment);
+    app->txrx->environment = NULL;
+
+    if(app->txrx->history) {
+        protopirate_history_free(app->txrx->history);
+        app->txrx->history = NULL;
+    }
+
+    app->decoder_initialized = false;
+
+    LOG_HEAP("Decoder deinit complete");
 
     return true;
 }
@@ -377,7 +445,13 @@ void protopirate_app_free(ProtoPirateApp* app) {
     protopirate_settings_save(&settings);
 
     // Deinitialize radio if it was initialized
-    protopirate_radio_deinit(app);
+    if(app->radio_initialized && !app->decoder_initialized) {
+        protopirate_radio_deinit(app);
+    } else if(app->decoder_initialized && !app->radio_initialized) {
+        protopirate_decoder_deinit(app);
+    } else if(app->decoder_initialized && app->radio_initialized) {
+        protopirate_radio_deinit(app);
+    }
 
     if(app->loaded_file_path) {
         furi_string_free(app->loaded_file_path);

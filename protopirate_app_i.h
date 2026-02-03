@@ -82,6 +82,7 @@ struct ProtoPirateApp {
     FuriString* loaded_file_path;
     bool auto_save;
     bool radio_initialized;
+    bool decoder_initialized;
     ProtoPirateSettings settings;
 };
 
