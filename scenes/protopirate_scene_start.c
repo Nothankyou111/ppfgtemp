@@ -10,8 +10,12 @@ typedef enum {
     SubmenuIndexProtoPirateReceiver,
     SubmenuIndexProtoPirateSaved,
     SubmenuIndexProtoPirateReceiverConfig,
+#ifdef ENABLE_SUB_DECODE_SCENE
     SubmenuIndexProtoPirateSubDecode,
+#endif
+#ifdef ENABLE_TIMING_TUNER_SCENE
     SubmenuIndexProtoPirateTimingTuner,
+#endif
     SubmenuIndexProtoPirateAbout,
 } SubmenuIndex;
 
@@ -19,7 +23,7 @@ typedef enum {
 static void protopirate_scene_start_open_saved_captures(ProtoPirateApp* app);
 
 static void protopirate_scene_start_submenu_callback(void* context, uint32_t index) {
-    furi_assert(context);
+    furi_check(context);
     ProtoPirateApp* app = context;
 
     // Handle "Saved Captures" directly here, not via custom event
@@ -125,7 +129,7 @@ static void protopirate_scene_start_open_saved_captures(ProtoPirateApp* app) {
 }
 
 void protopirate_scene_start_on_enter(void* context) {
-    furi_assert(context);
+    furi_check(context);
     ProtoPirateApp* app = context;
 
     submenu_add_item(
@@ -148,20 +152,22 @@ void protopirate_scene_start_on_enter(void* context) {
         SubmenuIndexProtoPirateReceiverConfig,
         protopirate_scene_start_submenu_callback,
         app);
-
+#ifdef ENABLE_SUB_DECODE_SCENE
     submenu_add_item(
         app->submenu,
         "Sub Decode",
         SubmenuIndexProtoPirateSubDecode,
         protopirate_scene_start_submenu_callback,
         app);
-
+#endif
+#ifdef ENABLE_TIMING_TUNER_SCENE
     submenu_add_item(
         app->submenu,
         "Timing Tuner",
         SubmenuIndexProtoPirateTimingTuner,
         protopirate_scene_start_submenu_callback,
         app);
+#endif
 
     submenu_add_item(
         app->submenu,
@@ -177,7 +183,7 @@ void protopirate_scene_start_on_enter(void* context) {
 }
 
 bool protopirate_scene_start_on_event(void* context, SceneManagerEvent event) {
-    furi_assert(context);
+    furi_check(context);
     ProtoPirateApp* app = context;
     bool consumed = false;
 
@@ -191,13 +197,19 @@ bool protopirate_scene_start_on_event(void* context, SceneManagerEvent event) {
         } else if(event.event == SubmenuIndexProtoPirateReceiverConfig) {
             scene_manager_next_scene(app->scene_manager, ProtoPirateSceneReceiverConfig);
             consumed = true;
-        } else if(event.event == SubmenuIndexProtoPirateSubDecode) {
+        }
+#ifdef ENABLE_SUB_DECODE_SCENE
+        else if(event.event == SubmenuIndexProtoPirateSubDecode) {
             scene_manager_next_scene(app->scene_manager, ProtoPirateSceneSubDecode);
             consumed = true;
-        } else if(event.event == SubmenuIndexProtoPirateTimingTuner) {
+        }
+#endif
+#ifdef ENABLE_TIMING_TUNER_SCENE
+        else if(event.event == SubmenuIndexProtoPirateTimingTuner) {
             scene_manager_next_scene(app->scene_manager, ProtoPirateSceneTimingTuner);
             consumed = true;
         }
+#endif
         scene_manager_set_scene_state(app->scene_manager, ProtoPirateSceneStart, event.event);
     }
 
@@ -205,7 +217,7 @@ bool protopirate_scene_start_on_event(void* context, SceneManagerEvent event) {
 }
 
 void protopirate_scene_start_on_exit(void* context) {
-    furi_assert(context);
+    furi_check(context);
     ProtoPirateApp* app = context;
     submenu_reset(app->submenu);
 }

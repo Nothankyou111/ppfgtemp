@@ -20,7 +20,7 @@ void protopirate_view_receiver_info_set_callback(
     ProtoPirateReceiverInfo* receiver_info,
     ProtoPirateReceiverInfoCallback callback,
     void* context) {
-    furi_assert(receiver_info);
+    furi_check(receiver_info);
     receiver_info->callback = callback;
     receiver_info->context = context;
 }
@@ -41,7 +41,7 @@ void protopirate_view_receiver_info_draw(Canvas* canvas, ProtoPirateReceiverInfo
 }
 
 bool protopirate_view_receiver_info_input(InputEvent* event, void* context) {
-    furi_assert(context);
+    furi_check(context);
     UNUSED(context);
     bool consumed = false;
 
@@ -55,12 +55,12 @@ bool protopirate_view_receiver_info_input(InputEvent* event, void* context) {
 }
 
 void protopirate_view_receiver_info_enter(void* context) {
-    furi_assert(context);
+    furi_check(context);
     UNUSED(context);
 }
 
 void protopirate_view_receiver_info_exit(void* context) {
-    furi_assert(context);
+    furi_check(context);
     ProtoPirateReceiverInfo* receiver_info = context;
     with_view_model(
         receiver_info->view,
@@ -98,7 +98,7 @@ ProtoPirateReceiverInfo* protopirate_view_receiver_info_alloc() {
 }
 
 void protopirate_view_receiver_info_free(ProtoPirateReceiverInfo* receiver_info) {
-    furi_assert(receiver_info);
+    furi_check(receiver_info);
 
     with_view_model(
         receiver_info->view,
@@ -114,14 +114,14 @@ void protopirate_view_receiver_info_free(ProtoPirateReceiverInfo* receiver_info)
 }
 
 View* protopirate_view_receiver_info_get_view(ProtoPirateReceiverInfo* receiver_info) {
-    furi_assert(receiver_info);
+    furi_check(receiver_info);
     return receiver_info->view;
 }
 
 void protopirate_view_receiver_info_set_protocol_name(
     ProtoPirateReceiverInfo* receiver_info,
     const char* protocol_name) {
-    furi_assert(receiver_info);
+    furi_check(receiver_info);
     with_view_model(
         receiver_info->view,
         ProtoPirateReceiverInfoModel * model,
@@ -132,7 +132,7 @@ void protopirate_view_receiver_info_set_protocol_name(
 void protopirate_view_receiver_info_set_info_text(
     ProtoPirateReceiverInfo* receiver_info,
     const char* info_text) {
-    furi_assert(receiver_info);
+    furi_check(receiver_info);
     with_view_model(
         receiver_info->view,
         ProtoPirateReceiverInfoModel * model,

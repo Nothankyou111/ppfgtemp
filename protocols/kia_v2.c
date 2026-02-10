@@ -87,7 +87,7 @@ static uint8_t kia_v2_calculate_crc(uint64_t data) {
 }
 
 static void kia_protocol_encoder_v2_get_upload(SubGhzProtocolEncoderKiaV2* instance) {
-    furi_assert(instance);
+    furi_check(instance);
     size_t index = 0;
 
     uint8_t crc = kia_v2_calculate_crc(instance->generic.data);
@@ -150,7 +150,7 @@ void* kia_protocol_encoder_v2_alloc(SubGhzEnvironment* environment) {
 }
 
 void kia_protocol_encoder_v2_free(void* context) {
-    furi_assert(context);
+    furi_check(context);
     SubGhzProtocolEncoderKiaV2* instance = context;
     free(instance->encoder.upload);
     free(instance);
@@ -158,7 +158,7 @@ void kia_protocol_encoder_v2_free(void* context) {
 
 SubGhzProtocolStatus
     kia_protocol_encoder_v2_deserialize(void* context, FlipperFormat* flipper_format) {
-    furi_assert(context);
+    furi_check(context);
     SubGhzProtocolEncoderKiaV2* instance = context;
     SubGhzProtocolStatus ret = SubGhzProtocolStatusError;
 
@@ -313,13 +313,13 @@ SubGhzProtocolStatus
 }
 
 void kia_protocol_encoder_v2_stop(void* context) {
-    furi_assert(context);
+    furi_check(context);
     SubGhzProtocolEncoderKiaV2* instance = context;
     instance->encoder.is_running = false;
 }
 
 LevelDuration kia_protocol_encoder_v2_yield(void* context) {
-    furi_assert(context);
+    furi_check(context);
     SubGhzProtocolEncoderKiaV2* instance = context;
 
     if(instance->encoder.repeat == 0 || !instance->encoder.is_running) {
@@ -364,13 +364,13 @@ void* kia_protocol_decoder_v2_alloc(SubGhzEnvironment* environment) {
 }
 
 void kia_protocol_decoder_v2_free(void* context) {
-    furi_assert(context);
+    furi_check(context);
     SubGhzProtocolDecoderKiaV2* instance = context;
     free(instance);
 }
 
 void kia_protocol_decoder_v2_reset(void* context) {
-    furi_assert(context);
+    furi_check(context);
     SubGhzProtocolDecoderKiaV2* instance = context;
     instance->decoder.parser_step = KiaV2DecoderStepReset;
     instance->header_count = 0;
@@ -380,7 +380,7 @@ void kia_protocol_decoder_v2_reset(void* context) {
 }
 
 void kia_protocol_decoder_v2_feed(void* context, bool level, uint32_t duration) {
-    furi_assert(context);
+    furi_check(context);
     SubGhzProtocolDecoderKiaV2* instance = context;
 
     switch(instance->decoder.parser_step) {
@@ -481,7 +481,7 @@ void kia_protocol_decoder_v2_feed(void* context, bool level, uint32_t duration) 
 }
 
 uint8_t kia_protocol_decoder_v2_get_hash_data(void* context) {
-    furi_assert(context);
+    furi_check(context);
     SubGhzProtocolDecoderKiaV2* instance = context;
     return subghz_protocol_blocks_get_hash_data(
         &instance->decoder, (instance->decoder.decode_count_bit / 8) + 1);
@@ -491,7 +491,7 @@ SubGhzProtocolStatus kia_protocol_decoder_v2_serialize(
     void* context,
     FlipperFormat* flipper_format,
     SubGhzRadioPreset* preset) {
-    furi_assert(context);
+    furi_check(context);
     SubGhzProtocolDecoderKiaV2* instance = context;
 
     SubGhzProtocolStatus ret = SubGhzProtocolStatusError;
@@ -554,14 +554,14 @@ SubGhzProtocolStatus kia_protocol_decoder_v2_serialize(
 
 SubGhzProtocolStatus
     kia_protocol_decoder_v2_deserialize(void* context, FlipperFormat* flipper_format) {
-    furi_assert(context);
+    furi_check(context);
     SubGhzProtocolDecoderKiaV2* instance = context;
     return subghz_block_generic_deserialize_check_count_bit(
         &instance->generic, flipper_format, kia_protocol_v2_const.min_count_bit_for_found);
 }
 
 void kia_protocol_decoder_v2_get_string(void* context, FuriString* output) {
-    furi_assert(context);
+    furi_check(context);
     SubGhzProtocolDecoderKiaV2* instance = context;
 
     uint8_t crc = instance->generic.data & 0x0F;

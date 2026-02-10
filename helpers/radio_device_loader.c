@@ -99,7 +99,7 @@ bool radio_device_loader_is_external(const SubGhzDevice* radio_device) {
 }
 
 void radio_device_loader_end(const SubGhzDevice* radio_device) {
-    furi_assert(radio_device);
+    furi_check(radio_device);
 
     radio_device_loader_power_off();
 

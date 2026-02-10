@@ -146,7 +146,7 @@ static bool about_input_callback(InputEvent* event, void* context) {
 }
 
 void protopirate_scene_about_on_enter(void* context) {
-    furi_assert(context);
+    furi_check(context);
     ProtoPirateApp* app = context;
 
     g_state.frame = 0;
@@ -184,7 +184,7 @@ bool protopirate_scene_about_on_event(void* context, SceneManagerEvent event) {
 }
 
 void protopirate_scene_about_on_exit(void* context) {
-    furi_assert(context);
+    furi_check(context);
     ProtoPirateApp* app = context;
 
     view_set_draw_callback(app->view_about, NULL);

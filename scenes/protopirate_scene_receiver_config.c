@@ -5,6 +5,7 @@ enum ProtoPirateSettingIndex {
     ProtoPirateSettingIndexFrequency,
     ProtoPirateSettingIndexHopping,
     ProtoPirateSettingIndexModulation,
+    ProtoPirateSettingIndexTXPower,
     ProtoPirateSettingIndexAutoSave,
     ProtoPirateSettingIndexLock,
 };
@@ -14,6 +15,7 @@ const char* const hopping_text[HOPPING_COUNT] = {
     "OFF",
     "ON",
 };
+
 const uint32_t hopping_value[HOPPING_COUNT] = {
     ProtoPirateHopperStateOFF,
     ProtoPirateHopperStateRunning,
@@ -25,8 +27,23 @@ const char* const auto_save_text[AUTO_SAVE_COUNT] = {
     "ON",
 };
 
+#define TX_POWER_COUNT 11
+const char* const tx_power_text[TX_POWER_COUNT] = {
+    "Preset",
+    "12dBm",
+    "10dBm",
+    "7dBm",
+    "5dBm",
+    "0dBm",
+    "-6dBm",
+    "-10dBm",
+    "-15dBm",
+    "-20dBm",
+    "-30dBm",
+};
+
 uint8_t protopirate_scene_receiver_config_next_frequency(const uint32_t value, void* context) {
-    furi_assert(context);
+    furi_check(context);
     ProtoPirateApp* app = context;
     uint8_t index = 0;
     for(uint8_t i = 0; i < subghz_setting_get_frequency_count(app->setting); i++) {
@@ -41,7 +58,7 @@ uint8_t protopirate_scene_receiver_config_next_frequency(const uint32_t value, v
 }
 
 uint8_t protopirate_scene_receiver_config_next_preset(const char* preset_name, void* context) {
-    furi_assert(context);
+    furi_check(context);
     ProtoPirateApp* app = context;
     uint8_t index = 0;
     for(uint8_t i = 0; i < subghz_setting_get_preset_count(app->setting); i++) {
@@ -58,7 +75,7 @@ uint8_t protopirate_scene_receiver_config_hopper_value_index(
     const uint32_t values[],
     uint8_t values_count,
     void* context) {
-    furi_assert(context);
+    furi_check(context);
     UNUSED(values_count);
     ProtoPirateApp* app = context;
 
@@ -150,9 +167,17 @@ static void protopirate_scene_receiver_config_set_auto_save(VariableItem* item) 
     variable_item_set_current_value_text(item, auto_save_text[index]);
 }
 
+static void protopirate_scene_receiver_config_set_tx_power(VariableItem* item) {
+    ProtoPirateApp* app = variable_item_get_context(item);
+    uint8_t index = variable_item_get_current_value_index(item);
+
+    app->tx_power = index;
+    variable_item_set_current_value_text(item, tx_power_text[index]);
+}
+
 static void
     protopirate_scene_receiver_config_var_list_enter_callback(void* context, uint32_t index) {
-    furi_assert(context);
+    furi_check(context);
     ProtoPirateApp* app = context;
     if(index == ProtoPirateSettingIndexLock) {
         view_dispatcher_send_custom_event(
@@ -207,6 +232,16 @@ void protopirate_scene_receiver_config_on_enter(void* context) {
     variable_item_set_current_value_index(item, value_index);
     variable_item_set_current_value_text(
         item, subghz_setting_get_preset_name(app->setting, value_index));
+
+    // TX power option
+    item = variable_item_list_add(
+        app->variable_item_list,
+        "TX Power:",
+        TX_POWER_COUNT,
+        protopirate_scene_receiver_config_set_tx_power,
+        app);
+    variable_item_set_current_value_index(item, app->tx_power);
+    variable_item_set_current_value_text(item, tx_power_text[app->tx_power]);
 
     // Auto-save option
     item = variable_item_list_add(
