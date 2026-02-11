@@ -42,16 +42,16 @@ void protopirate_view_receiver_info_draw(Canvas* canvas, ProtoPirateReceiverInfo
 
 bool protopirate_view_receiver_info_input(InputEvent* event, void* context) {
     furi_check(context);
-    UNUSED(context);
-    bool consumed = false;
+    ProtoPirateReceiverInfo* receiver_info = context;
 
-    if(event->type == InputTypeShort) {
-        if(event->key == InputKeyBack) {
-            consumed = true;
+    if(event->type == InputTypeShort && event->key == InputKeyBack) {
+        if(receiver_info->callback) {
+            receiver_info->callback(
+                ProtoPirateCustomEventViewReceiverBack, receiver_info->context);
         }
+        return true;
     }
-
-    return consumed;
+    return false;
 }
 
 void protopirate_view_receiver_info_enter(void* context) {
@@ -74,6 +74,7 @@ void protopirate_view_receiver_info_exit(void* context) {
 
 ProtoPirateReceiverInfo* protopirate_view_receiver_info_alloc() {
     ProtoPirateReceiverInfo* receiver_info = malloc(sizeof(ProtoPirateReceiverInfo));
+    furi_check(receiver_info);
 
     receiver_info->view = view_alloc();
     view_allocate_model(

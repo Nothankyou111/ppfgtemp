@@ -1084,6 +1084,8 @@ bool protopirate_scene_sub_decode_on_event(void* context, SceneManagerEvent even
 void protopirate_scene_sub_decode_on_exit(void* context) {
     ProtoPirateApp* app = context;
 
+    subghz_receiver_reset(app->txrx->receiver);
+
     subghz_receiver_set_rx_callback(app->txrx->receiver, NULL, NULL);
 
     if(g_decode_ctx) {

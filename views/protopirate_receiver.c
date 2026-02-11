@@ -44,11 +44,16 @@ typedef struct {
 } ProtoPirateReceiverModel;
 
 static void protopirate_view_rssi_draw(Canvas* canvas, ProtoPirateReceiverModel* model) {
+    furi_check(model);
     uint8_t u_rssi = 0;
-    UNUSED(model);
 
     if(model->rssi >= SUBGHZ_RAW_THRESHOLD_MIN) {
-        u_rssi = (uint8_t)(model->rssi - SUBGHZ_RAW_THRESHOLD_MIN);
+        /* Clamp to a sane range to prevent wrap and off-screen drawing */
+        /* we are using 90.0 to keep (46 + i + (i/5)) within screen bounds (128px wide) */
+        float v = model->rssi - SUBGHZ_RAW_THRESHOLD_MIN;
+        if(v < 0.0f) v = 0.0f;
+        if(v > 90.0f) v = 90.0f; /* 90 is arbitrary but safe for the screen width */
+        u_rssi = (uint8_t)v;
     }
 
     //Add a 1px space between the segments
@@ -135,7 +140,8 @@ void protopirate_view_receiver_add_item_to_menu(
         {
             ProtoPirateReceiverMenuItem* item_menu =
                 ProtoPirateReceiverMenuItemArray_push_raw(model->history_item_arr);
-            item_menu->item_str = furi_string_alloc_set(name);
+            const char* safe_name = name ? name : "EMPTY_NAME";
+            item_menu->item_str = furi_string_alloc_set(safe_name);
             item_menu->type = type;
         },
         true);
@@ -181,7 +187,8 @@ void protopirate_view_receiver_draw(Canvas* canvas, ProtoPirateReceiverModel* mo
     canvas_set_font(canvas, FontSecondary);
 
     // Increment animation frame
-    model->animation_frame = (model->animation_frame + 1) % 96;
+    static uint8_t animation_frame = 0;
+    animation_frame = (animation_frame + 1) % 96;
 
     size_t item_count = ProtoPirateReceiverMenuItemArray_size(model->history_item_arr);
     bool scrollbar = item_count > MENU_ITEMS;
@@ -264,7 +271,7 @@ void protopirate_view_receiver_draw(Canvas* canvas, ProtoPirateReceiverModel* mo
             // Three waves of expanding circles with different speeds
             for(int wave = 0; wave < 3; wave++) {
                 // Calculate radius for this wave with offset
-                int base_radius = ((model->animation_frame + wave * 32) % 96) / 3;
+                int base_radius = ((animation_frame + wave * 32) % 96) / 3;
 
                 if(base_radius < 28) {
                     // Calculate fade based on distance from center
@@ -308,7 +315,7 @@ void protopirate_view_receiver_draw(Canvas* canvas, ProtoPirateReceiverModel* mo
             }
 
             // Rotating sweep line with glow effect
-            float sweep_angle = (model->animation_frame * 3.75f) * 3.14159f / 180.0f;
+            float sweep_angle = (animation_frame * 3.75f) * 3.14159f / 180.0f;
 
             // Main sweep line
             int sweep_x = center_x + 22 * cosf(sweep_angle);
@@ -346,7 +353,7 @@ void protopirate_view_receiver_draw(Canvas* canvas, ProtoPirateReceiverModel* mo
             }
 
             // Pulsing center
-            int pulse = (model->animation_frame % 32);
+            int pulse = (animation_frame % 32);
             if(pulse < 16) {
                 canvas_draw_disc(canvas, center_x, center_y, 2);
             } else {
@@ -397,6 +404,8 @@ bool protopirate_view_receiver_input(InputEvent* event, void* context) {
         receiver->view, ProtoPirateReceiverModel * model, { lock = model->lock; }, false);
 
     if(lock == ProtoPirateLockOn) {
+        bool do_unlock_cb = false;
+
         with_view_model(
             receiver->view,
             ProtoPirateReceiverModel * model,
@@ -407,10 +416,7 @@ bool protopirate_view_receiver_input(InputEvent* event, void* context) {
                         if(model->lock_count >= UNLOCK_CNT) {
                             model->lock = ProtoPirateLockOff;
                             model->lock_count = 0;
-                            if(receiver->callback) {
-                                receiver->callback(
-                                    ProtoPirateCustomEventViewReceiverUnlock, receiver->context);
-                            }
+                            do_unlock_cb = true;
                         }
                     }
                 } else if(
@@ -420,6 +426,11 @@ bool protopirate_view_receiver_input(InputEvent* event, void* context) {
                 }
             },
             true);
+
+        if(do_unlock_cb && receiver->callback) {
+            receiver->callback(ProtoPirateCustomEventViewReceiverUnlock, receiver->context);
+        }
+
         consumed = true;
     } else if(
         event->type == InputTypeShort || event->type == InputTypeLong ||
@@ -463,34 +474,36 @@ bool protopirate_view_receiver_input(InputEvent* event, void* context) {
             consumed = true;
             break;
         case InputKeyOk:
+            bool do_ok_cb = false;
+            bool do_toggle = false;
+            /* Read-only: do not redraw */
             with_view_model(
                 receiver->view,
                 ProtoPirateReceiverModel * model,
                 {
                     size_t item_count =
                         ProtoPirateReceiverMenuItemArray_size(model->history_item_arr);
+
                     if(item_count > 0) {
-                        if(receiver->callback) {
-                            receiver->callback(
-                                ProtoPirateCustomEventViewReceiverOK, receiver->context);
-                        }
-                    } else {
-                        if(event->type == InputTypeLong) {
-                            with_view_model(
-                                receiver->view,
-                                ProtoPirateReceiverModel * model,
-                                { model->dolphin_view = !model->dolphin_view; },
-                                true);
-                        }
+                        do_ok_cb = true;
+                    } else if(event->type == InputTypeLong) {
+                        do_toggle = true;
                     }
                 },
                 false);
-            consumed = true;
-            break;
-        case InputKeyBack:
-            if(receiver->callback) {
-                receiver->callback(ProtoPirateCustomEventViewReceiverBack, receiver->context);
+            /* Only redraw if we actually changed dolphin_view */
+            if(do_toggle) {
+                with_view_model(
+                    receiver->view,
+                    ProtoPirateReceiverModel * model,
+                    { model->dolphin_view = !model->dolphin_view; },
+                    true);
             }
+
+            if(do_ok_cb && receiver->callback) {
+                receiver->callback(ProtoPirateCustomEventViewReceiverOK, receiver->context);
+            }
+
             consumed = true;
             break;
         default:
@@ -538,6 +551,8 @@ ProtoPirateReceiver* protopirate_view_receiver_alloc(bool auto_save) {
             model->lock_count = 0;
             model->auto_save = auto_save;
             model->animation_frame = 0;
+            model->dolphin_view = false;
+            model->sub_decode_mode = false;
         },
         true);
 

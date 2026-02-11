@@ -14,6 +14,7 @@ static const char* credits[] = {
     "RocketGod",
     "MMX",
     "Leeroy",
+    "gullradriel",
     "Skorp's Weather App",
     "Vadim's Radio Driver",
     "-=> Protocol Magic by",
