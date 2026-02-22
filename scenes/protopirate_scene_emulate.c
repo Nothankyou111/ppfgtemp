@@ -19,23 +19,37 @@ typedef struct {
     SubGhzTransmitter* transmitter;
     bool is_transmitting;
     bool flag_stop_called;
+    Storage* storage;
 } EmulateContext;
 
 static EmulateContext* emulate_context = NULL;
 
-#define TX_PRESET_POWER_COUNT 11
-const uint8_t tx_power_value[TX_PRESET_POWER_COUNT] = {
+#define TX_PRESET_VALUES_AM    8 //Gets 1 added, so is 1 less than actual value.
+#define TX_PRESET_VALUES_COUNT 17
+
+//I had to skip the +10dBM and -6dBm Values, use only ones AM/FM have in common.
+//Highest Value is 12dBm for AM, 10 for FM. So Menu needs to reflect that.
+const uint8_t tx_power_value[TX_PRESET_VALUES_COUNT] = {
+    //FM Power Values for 1st PA Table Byte.
     0,
-    0xC0,
-    0xC5,
-    0xCD,
-    0x86,
-    0x50,
-    0x37,
-    0x26,
-    0x1D,
-    0x17,
-    0x03,
+    0xC0, // 10dBm
+    0xC8, //7dBm
+    0x84, //5dBm
+    0x60, //0dBm
+    0x34, //-10dBm
+    0x1D, //-15dBm
+    0x0E, // -20dBm
+    0x12, //-30dBm
+
+    //AM Power Values for 2nd PA Table Byte.
+    0xC0, //12dBm
+    0xCD, //7dBm
+    0x86, //5dBm
+    0x50, //0dBm
+    0x26, // -10dBm
+    0x1D, // -15dBm
+    0x17, //-20dBm
+    0x03 //-30dBm
 };
 
 void stop_tx(ProtoPirateApp* app) {
@@ -77,6 +91,11 @@ static void emulate_context_free(void) {
         emulate_context->protocol_name = NULL;
     }
 
+    if(emulate_context->storage) {
+        furi_record_close(RECORD_STORAGE);
+        emulate_context->storage = NULL;
+    }
+
     free(emulate_context);
     emulate_context = NULL;
 }
@@ -102,6 +121,18 @@ static uint8_t
     }
     // VAG
     else if(strstr(protocol, "VAG")) {
+        if(original == 0x10 || original == 0x20 || original == 0x40) {
+            switch(key) {
+            case InputKeyUp:
+                return 0x20; // Lock
+            case InputKeyOk:
+                return 0x10; // Unlock
+            case InputKeyDown:
+                return 0x40; // Boot
+            default:
+                return original;
+            }
+        }
         switch(key) {
         case InputKeyUp:
             return 0x2; // Lock
@@ -347,6 +378,9 @@ static bool protopirate_emulate_input_callback(InputEvent* event, void* context)
 void protopirate_scene_emulate_on_enter(void* context) {
     ProtoPirateApp* app = context;
 
+    //Stop charging while using the radio.
+    furi_hal_power_suppress_charge_enter();
+
     if(emulate_context != NULL) {
         FURI_LOG_W(TAG, "Previous emulate context not freed, cleaning up");
         emulate_context_free();
@@ -372,33 +406,46 @@ void protopirate_scene_emulate_on_enter(void* context) {
     // Load the file
     if(app->loaded_file_path) {
         // Open storage once and keep track of it
-        Storage* storage = furi_record_open(RECORD_STORAGE);
-        FlipperFormat* ff = flipper_format_file_alloc(storage);
-
-        if(!flipper_format_file_open_existing(ff, furi_string_get_cstr(app->loaded_file_path))) {
-            FURI_LOG_E(
-                TAG, "Failed to open file: %s", furi_string_get_cstr(app->loaded_file_path));
-            flipper_format_free(ff);
-            furi_record_close(RECORD_STORAGE);
+        emulate_context->storage = furi_record_open(RECORD_STORAGE);
+        if(!emulate_context->storage) {
+            FURI_LOG_E(TAG, "Failed to open storage");
             emulate_context_free();
             notification_message(app->notifications, &sequence_error);
             scene_manager_previous_scene(app->scene_manager);
             return;
         }
 
-        emulate_context->flipper_format = ff;
+        emulate_context->flipper_format = flipper_format_file_alloc(emulate_context->storage);
+        if(!emulate_context->flipper_format) {
+            FURI_LOG_E(TAG, "Failed to allocate FlipperFormat");
+            emulate_context_free();
+            notification_message(app->notifications, &sequence_error);
+            scene_manager_previous_scene(app->scene_manager);
+            return;
+        }
+
+        if(!flipper_format_file_open_existing(
+               emulate_context->flipper_format, furi_string_get_cstr(app->loaded_file_path))) {
+            FURI_LOG_E(
+                TAG, "Failed to open file: %s", furi_string_get_cstr(app->loaded_file_path));
+            emulate_context_free();
+            notification_message(app->notifications, &sequence_error);
+            scene_manager_previous_scene(app->scene_manager);
+            return;
+        }
 
         // Read frequency and preset from the saved file
         uint32_t frequency = 433920000;
         FuriString* preset_str = furi_string_alloc();
 
-        flipper_format_rewind(ff);
-        if(!flipper_format_read_uint32(ff, "Frequency", &frequency, 1)) {
+        flipper_format_rewind(emulate_context->flipper_format);
+        if(!flipper_format_read_uint32(
+               emulate_context->flipper_format, "Frequency", &frequency, 1)) {
             FURI_LOG_W(TAG, "Failed to read frequency, using default 433.92MHz");
         }
 
-        flipper_format_rewind(ff);
-        if(!flipper_format_read_string(ff, "Preset", preset_str)) {
+        flipper_format_rewind(emulate_context->flipper_format);
+        if(!flipper_format_read_string(emulate_context->flipper_format, "Preset", preset_str)) {
             FURI_LOG_W(TAG, "Failed to read preset, using AM650");
             furi_string_set(preset_str, "AM650");
         }
@@ -415,29 +462,32 @@ void protopirate_scene_emulate_on_enter(void* context) {
         furi_string_free(preset_str);
 
         // Read protocol name
-        flipper_format_rewind(ff);
-        if(!flipper_format_read_string(ff, "Protocol", emulate_context->protocol_name)) {
+        flipper_format_rewind(emulate_context->flipper_format);
+        if(!flipper_format_read_string(
+               emulate_context->flipper_format, "Protocol", emulate_context->protocol_name)) {
             FURI_LOG_E(TAG, "Failed to read protocol name");
             furi_string_set(emulate_context->protocol_name, "Unknown");
         }
 
         // Read serial
-        flipper_format_rewind(ff);
-        if(!flipper_format_read_uint32(ff, "Serial", &emulate_context->serial, 1)) {
+        flipper_format_rewind(emulate_context->flipper_format);
+        if(!flipper_format_read_uint32(
+               emulate_context->flipper_format, "Serial", &emulate_context->serial, 1)) {
             FURI_LOG_W(TAG, "Failed to read serial");
             emulate_context->serial = 0;
         }
 
         // Read original button
-        flipper_format_rewind(ff);
+        flipper_format_rewind(emulate_context->flipper_format);
         uint32_t btn_temp = 0;
-        if(flipper_format_read_uint32(ff, "Btn", &btn_temp, 1)) {
+        if(flipper_format_read_uint32(emulate_context->flipper_format, "Btn", &btn_temp, 1)) {
             emulate_context->original_button = (uint8_t)btn_temp;
         }
 
         // Read counter
-        flipper_format_rewind(ff);
-        if(flipper_format_read_uint32(ff, "Cnt", &emulate_context->original_counter, 1)) {
+        flipper_format_rewind(emulate_context->flipper_format);
+        if(flipper_format_read_uint32(
+               emulate_context->flipper_format, "Cnt", &emulate_context->original_counter, 1)) {
             emulate_context->current_counter = emulate_context->original_counter;
         }
 
@@ -475,9 +525,9 @@ void protopirate_scene_emulate_on_enter(void* context) {
                     FURI_LOG_I(TAG, "Transmitter allocated successfully");
 
                     // Deserialize for transmission
-                    flipper_format_rewind(ff);
-                    SubGhzProtocolStatus status =
-                        subghz_transmitter_deserialize(emulate_context->transmitter, ff);
+                    flipper_format_rewind(emulate_context->flipper_format);
+                    SubGhzProtocolStatus status = subghz_transmitter_deserialize(
+                        emulate_context->transmitter, emulate_context->flipper_format);
 
                     if(status != SubGhzProtocolStatusOk) {
                         FURI_LOG_E(TAG, "Failed to deserialize transmitter, status: %d", status);
@@ -518,10 +568,12 @@ uint8_t get_tx_preset_byte(uint8_t* preset_data) {
     while(preset_data[offset] && (offset < MAX_PRESET_SIZE)) {
         offset += 2;
     }
-    return (!preset_data[offset] ? offset + 3 : 0);
+    return (!preset_data[offset] ? offset + 2 : 0);
 }
 
 bool protopirate_scene_emulate_on_event(void* context, SceneManagerEvent event) {
+#define INVALID_PRESET         "Cannot set TX power on this preset."
+#define CUSTOM_PRESET_DATA_KEY "Custom_preset_data"
     ProtoPirateApp* app = context;
     bool consumed = false;
 
@@ -562,14 +614,14 @@ bool protopirate_scene_emulate_on_event(void* context, SceneManagerEvent event) 
                     flipper_format_rewind(emulate_context->flipper_format);
                     if(flipper_format_get_value_count(
                            emulate_context->flipper_format,
-                           "Custom_preset_data",
+                           CUSTOM_PRESET_DATA_KEY,
                            &uint32_array_size) &&
                        uint32_array_size > 0 && uint32_array_size < 1024) {
                         preset_data = malloc(uint32_array_size);
                         free_custom_data = true;
                         if(!flipper_format_read_hex(
                                emulate_context->flipper_format,
-                               "Custom_preset_data",
+                               CUSTOM_PRESET_DATA_KEY,
                                preset_data,
                                uint32_array_size)) {
                             FURI_LOG_W(TAG, "Custom Preset not Loaded, trying AM650");
@@ -599,12 +651,29 @@ bool protopirate_scene_emulate_on_event(void* context, SceneManagerEvent event) 
                 }
 
                 if(preset_data) {
-                    uint8_t preset_offset = 0;
-                    //Set the TX Power
                     if(app->tx_power) {
+                        //Grab the start of the PA table for this Preset.
+                        uint8_t preset_offset = 0;
                         preset_offset = get_tx_preset_byte(preset_data);
-                        if(preset_offset)
+
+                        //Grab the AM and FM byte now, so we can do proper checks.
+                        uint8_t fm_byte = preset_data[preset_offset];
+                        uint8_t am_byte = preset_data[preset_offset + 1];
+
+                        if(fm_byte && am_byte) {
+                            //Must be a custom Preset with weird PA table not in FW code, dont touch it.
+                            FURI_LOG_I(TAG, INVALID_PRESET);
+                        } else if(fm_byte) {
+                            FURI_LOG_I(TAG, "FM PA table found.");
                             preset_data[preset_offset] = tx_power_value[app->tx_power];
+                        } else if(am_byte) {
+                            FURI_LOG_I(TAG, "AM PA table found.");
+                            preset_data[preset_offset + 1] =
+                                tx_power_value[TX_PRESET_VALUES_AM + app->tx_power];
+                        } else {
+                            //Must be a custom Preset with weird PA table not in FW code, dont touch it.
+                            FURI_LOG_I(TAG, INVALID_PRESET);
+                        }
                     }
 
                     // Configure radio for TX
@@ -642,7 +711,6 @@ bool protopirate_scene_emulate_on_event(void* context, SceneManagerEvent event) 
 
                 if(free_custom_data)
                     free(preset_data); //We have used the preset, I alloced it I have to free.
-
             } else {
                 FURI_LOG_E(TAG, "No transmitter available");
                 notification_message(app->notifications, &sequence_error);
@@ -723,9 +791,6 @@ void protopirate_scene_emulate_on_exit(void* context) {
     // Free emulate context and all its resources
     emulate_context_free();
 
-    // Close storage record that was opened in on_enter
-    furi_record_close(RECORD_STORAGE);
-
     // Delete temp file if we were using one
     protopirate_storage_delete_temp();
 
@@ -735,5 +800,15 @@ void protopirate_scene_emulate_on_exit(void* context) {
     view_set_draw_callback(app->view_about, NULL);
     view_set_input_callback(app->view_about, NULL);
     view_set_context(app->view_about, NULL);
+
+    //Switch back to widget view.
+    view_dispatcher_switch_to_view(app->view_dispatcher, ProtoPirateViewWidget);
+
+    //Remove About View.
+    view_dispatcher_remove_view(app->view_dispatcher, ProtoPirateViewAbout);
+    view_free(app->view_about);
+
+    //Can Charge Battery Again
+    furi_hal_power_suppress_charge_exit();
 }
 #endif

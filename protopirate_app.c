@@ -67,14 +67,26 @@ ProtoPirateApp* protopirate_app_alloc() {
     app->notifications = furi_record_open(RECORD_NOTIFICATION);
 
     // Open Dialogs record
-    app->dialogs = furi_record_open(RECORD_DIALOGS);
+    //app->dialogs = furi_record_open(RECORD_DIALOGS);
+
+    //Initialise Car Model varables
+
+#ifdef BUILD_MAIN_APP
+    app->car_models_count = protopirate_model_get_count();
+    FURI_LOG_D(TAG, "There are %u models available", app->car_models_count);
+    app->selected_model = NULL;
+    app->model_menu = NULL;
+    app->freq_menu = NULL;
+    app->hop_menu = NULL;
+    app->preset_menu = NULL;
+#endif
 
     // Variable Item List
-    app->variable_item_list = variable_item_list_alloc();
-    view_dispatcher_add_view(
-        app->view_dispatcher,
-        ProtoPirateViewVariableItemList,
-        variable_item_list_get_view(app->variable_item_list));
+    //app->variable_item_list = variable_item_list_alloc();
+    // view_dispatcher_add_view(
+    //     app->view_dispatcher,
+    //     ProtoPirateViewVariableItemList,
+    //     variable_item_list_get_view(app->variable_item_list));
 
     // SubMenu
     app->submenu = submenu_alloc();
@@ -88,11 +100,15 @@ ProtoPirateApp* protopirate_app_alloc() {
 
     // File Browser path
     app->file_path = furi_string_alloc();
+#ifdef BUILD_MAIN_APP
     furi_string_set(app->file_path, PROTOPIRATE_APP_FOLDER);
+#else
+    furi_string_set(app->file_path, "/ext/apps_data/proto_pirate/");
+#endif
 
     // About View
-    app->view_about = view_alloc();
-    view_dispatcher_add_view(app->view_dispatcher, ProtoPirateViewAbout, app->view_about);
+    //app->view_about = view_alloc();
+    //view_dispatcher_add_view(app->view_dispatcher, ProtoPirateViewAbout, app->view_about);
 
     LOG_HEAP("After basic views");
 
@@ -101,11 +117,12 @@ ProtoPirateApp* protopirate_app_alloc() {
     protopirate_settings_load(&settings);
 
     // Apply auto-save setting
-    app->auto_save = settings.auto_save;
+    app->option_flags = settings.option_flags;
     app->tx_power = settings.tx_power;
 
     // Receiver Views
-    app->protopirate_receiver = protopirate_view_receiver_alloc(app->auto_save);
+    app->protopirate_receiver =
+        protopirate_view_receiver_alloc(((app->option_flags & FLAG_AUTO_SAVE) == FLAG_AUTO_SAVE));
     view_dispatcher_add_view(
         app->view_dispatcher,
         ProtoPirateViewReceiver,
@@ -170,7 +187,7 @@ ProtoPirateApp* protopirate_app_alloc() {
         "Settings: freq=%lu, preset=%s, auto_save=%d, hopping=%d",
         frequency,
         preset_name,
-        settings.auto_save,
+        ((settings.option_flags & FLAG_AUTO_SAVE) == FLAG_AUTO_SAVE),
         settings.hopping_enabled);
 
     protopirate_preset_init(app, preset_name, frequency, preset_data, preset_data_size);
@@ -195,7 +212,6 @@ ProtoPirateApp* protopirate_app_alloc() {
     }
 
     FURI_LOG_D(TAG, "Initial state: radio_initialized=%d", app->radio_initialized);
-
     LOG_HEAP("App alloc complete (radio deferred)");
 
     return app;
@@ -371,6 +387,39 @@ void protopirate_radio_deinit(ProtoPirateApp* app) {
     LOG_HEAP("Radio deinit complete");
 }
 
+#ifdef BUILD_MAIN_APP
+void protopirate_car_model_free(ProtoPirateCarModel** selected_model) {
+    if(selected_model && *selected_model) {
+        ProtoPirateCarModel* model = *selected_model;
+
+        FURI_LOG_D(TAG, "Freeing selected_model");
+
+        if(model->name) {
+            furi_string_free(model->name);
+            model->name = NULL;
+        }
+
+        if(model->preset) {
+            if(model->preset->data) {
+                free(model->preset->data);
+                model->preset->data = NULL;
+            }
+
+            if(model->preset->name) {
+                furi_string_free(model->preset->name);
+                model->preset->name = NULL;
+            }
+
+            free(model->preset);
+            model->preset = NULL;
+        }
+
+        free(model);
+        *selected_model = NULL;
+    }
+}
+#endif
+
 void protopirate_app_free(ProtoPirateApp* app) {
     furi_check(app);
 
@@ -380,7 +429,7 @@ void protopirate_app_free(ProtoPirateApp* app) {
     // Save settings before exiting
     ProtoPirateSettings settings;
     settings.frequency = app->txrx->preset->frequency;
-    settings.auto_save = app->auto_save;
+    settings.option_flags = app->option_flags;
     settings.tx_power = app->tx_power;
     settings.hopping_enabled = (app->txrx->hopper_state != ProtoPirateHopperStateOFF);
 
@@ -399,9 +448,15 @@ void protopirate_app_free(ProtoPirateApp* app) {
         "Saving settings: freq=%lu, preset=%u, auto_save=%d, hopping=%d",
         settings.frequency,
         settings.preset_index,
-        settings.auto_save,
+        ((settings.option_flags & FLAG_AUTO_SAVE) == FLAG_AUTO_SAVE),
         settings.hopping_enabled);
 
+    //Free the selected model, we wont save that.
+#ifdef BUILD_MAIN_APP
+    protopirate_car_model_free(&app->selected_model);
+#endif
+
+    //Save app settings
     protopirate_settings_save(&settings);
 
     // Deinitialize whichever is active - NULL checks inside handle all cases
@@ -420,14 +475,14 @@ void protopirate_app_free(ProtoPirateApp* app) {
     submenu_free(app->submenu);
 
     // Variable Item List
-    FURI_LOG_D(TAG, "Removing variable_item_list view");
-    view_dispatcher_remove_view(app->view_dispatcher, ProtoPirateViewVariableItemList);
-    variable_item_list_free(app->variable_item_list);
+    //FURI_LOG_D(TAG, "Removing variable_item_list view");
+    //view_dispatcher_remove_view(app->view_dispatcher, ProtoPirateViewVariableItemList);
+    //variable_item_list_free(app->variable_item_list);
 
     // About View
-    FURI_LOG_D(TAG, "Removing about view");
-    view_dispatcher_remove_view(app->view_dispatcher, ProtoPirateViewAbout);
-    view_free(app->view_about);
+    //FURI_LOG_D(TAG, "Removing about view");
+    //view_dispatcher_remove_view(app->view_dispatcher, ProtoPirateViewAbout);
+    //view_free(app->view_about);
 
     // File path
     if(app->file_path) {
@@ -466,9 +521,9 @@ void protopirate_app_free(ProtoPirateApp* app) {
     scene_manager_free(app->scene_manager);
 
     // Close Dialogs
-    FURI_LOG_D(TAG, "Closing dialogs record");
-    furi_record_close(RECORD_DIALOGS);
-    app->dialogs = NULL;
+    //FURI_LOG_D(TAG, "Closing dialogs record");
+    //furi_record_close(RECORD_DIALOGS);
+    //app->dialogs = NULL;
 
     // Notifications
     FURI_LOG_D(TAG, "Closing notifications record");
@@ -484,44 +539,49 @@ void protopirate_app_free(ProtoPirateApp* app) {
 }
 
 int32_t protopirate_app(char* p) {
-    furi_hal_power_suppress_charge_enter();
-
     ProtoPirateApp* protopirate_app = protopirate_app_alloc();
     if(!protopirate_app) {
         // logging is already done in protopirate_app_alloc()
-        furi_hal_power_suppress_charge_exit();
+        //furi_hal_power_suppress_charge_exit();
         return -1;
     }
 
+#ifdef ENABLE_SAVED_SCENE
     // Handle Command line PSF that may have been passed to us
     bool load_saved = (p && strlen(p));
     if(load_saved) protopirate_app->loaded_file_path = furi_string_alloc_set(p);
     scene_manager_next_scene(
         protopirate_app->scene_manager,
         (load_saved) ? ProtoPirateSceneSavedInfo : ProtoPirateSceneStart);
+#else
+    UNUSED(p);
+    scene_manager_next_scene(protopirate_app->scene_manager, ProtoPirateSceneStart);
+#endif
 
 #ifdef ENABLE_EMULATE_FEATURE
     //We now jump straight to emulate scene from Browser. If the user wanted the key to look at, just click back.
     //Makes it faster in my use case
+#ifdef ENABLE_SAVED_SCENE
     if(load_saved) {
         view_dispatcher_send_custom_event(
             protopirate_app->view_dispatcher, ProtoPirateCustomEventSavedInfoEmulate);
         notification_message(protopirate_app->notifications, &sequence_success);
     }
+#endif
 #else
     //We now jump straight to emulate scene from Browser. If the user wanted the key to look at, just click back.
     //Makes it faster in my use case
+#ifdef ENABLE_SAVED_SCENE
     if(load_saved) {
         view_dispatcher_send_custom_event(
             protopirate_app->view_dispatcher, ProtoPirateCustomEventReceiverInfoSave);
     }
 #endif
+#endif
 
     view_dispatcher_run(protopirate_app->view_dispatcher);
 
     protopirate_app_free(protopirate_app);
-
-    furi_hal_power_suppress_charge_exit();
 
     return 0;
 }

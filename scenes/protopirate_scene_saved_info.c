@@ -1,5 +1,7 @@
 // scenes/protopirate_scene_saved_info.c
 #include "../protopirate_app_i.h"
+#ifdef ENABLE_SAVED_SCENE
+
 #include "../helpers/protopirate_storage.h"
 
 #define TAG "ProtoPirateSceneSavedInfo"
@@ -28,12 +30,15 @@ static void protopirate_scene_saved_info_widget_callback(
             notification_message(app->notifications, &sequence_semi_success);
             view_dispatcher_send_custom_event(
                 app->view_dispatcher, ProtoPirateCustomEventSavedInfoDelete);
+            break;
         default:
+            break;
         }
     }
 }
 
 void protopirate_scene_saved_info_on_enter(void* context) {
+    furi_check(context);
     ProtoPirateApp* app = context;
     Storage* storage = NULL;
     FlipperFormat* ff = NULL;
@@ -104,7 +109,9 @@ void protopirate_scene_saved_info_on_enter(void* context) {
     FURI_LOG_I(TAG, "File opened, reading...");
 
     // Read fields
-    uint32_t temp_data;
+    uint32_t temp_data = 0;
+    // reset is_emu_off state before loading
+    is_emu_off = false;
 
     flipper_format_rewind(ff);
     if(flipper_format_read_string(ff, "Protocol", temp_str)) {
@@ -112,12 +119,8 @@ void protopirate_scene_saved_info_on_enter(void* context) {
     }
     if(furi_string_cmp_str(temp_str, "Scher-Khan") == 0) {
         is_emu_off = true;
-    } else if(furi_string_cmp_str(temp_str, "Kia V5") == 0) {
-        is_emu_off = true;
     } else if(furi_string_cmp_str(temp_str, "Kia V6") == 0) {
         is_emu_off = true;
-    } else {
-        is_emu_off = false;
     }
 
     flipper_format_rewind(ff);
@@ -265,6 +268,9 @@ bool protopirate_scene_saved_info_on_event(void* context, SceneManagerEvent even
 #ifdef ENABLE_EMULATE_FEATURE
         if(event.event == ProtoPirateCustomEventSavedInfoEmulate && !is_emu_off) {
             FURI_LOG_I(TAG, "Emulate requested");
+            //Allocate the About View.
+            app->view_about = view_alloc();
+            view_dispatcher_add_view(app->view_dispatcher, ProtoPirateViewAbout, app->view_about);
             scene_manager_next_scene(app->scene_manager, ProtoPirateSceneEmulate);
             consumed = true;
         }
@@ -279,3 +285,4 @@ void protopirate_scene_saved_info_on_exit(void* context) {
     FURI_LOG_I(TAG, "Exiting SavedInfo scene");
     widget_reset(app->widget);
 }
+#endif //ENABLE_SAVED_SCENE

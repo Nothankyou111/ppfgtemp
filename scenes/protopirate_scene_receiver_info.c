@@ -1,5 +1,7 @@
 // scenes/protopirate_scene_receiver_info.c
 #include "../protopirate_app_i.h"
+#ifdef ENABLE_RECEIVER_SCENE
+
 #include "../helpers/protopirate_storage.h"
 
 #define TAG "ProtoPirateReceiverInfo"
@@ -29,6 +31,12 @@ void protopirate_scene_receiver_info_on_enter(void* context) {
     furi_check(context);
     ProtoPirateApp* app = context;
 
+    //Stop chargin while using the radio.
+    furi_hal_power_suppress_charge_enter();
+
+    // Always reset per-enter to avoid stale static state
+    is_emu_off = false;
+
     widget_reset(app->widget);
 
     FuriString* text;
@@ -53,8 +61,6 @@ void protopirate_scene_receiver_info_on_enter(void* context) {
                 is_psa = true;
             }
             if(furi_string_cmp_str(protocol, "Scher-Khan") == 0) {
-                is_emu_off = true;
-            } else if(furi_string_cmp_str(protocol, "Kia V5") == 0) {
                 is_emu_off = true;
             } else if(furi_string_cmp_str(protocol, "Kia V6") == 0) {
                 is_emu_off = true;
@@ -184,7 +190,25 @@ bool protopirate_scene_receiver_info_on_event(void* context, SceneManagerEvent e
             FlipperFormat* ff =
                 protopirate_history_get_raw_data(app->txrx->history, app->txrx->idx_menu_chosen);
 
+            FuriString* filename_str = furi_string_alloc();
+
             if(ff) {
+                if(app->option_flags & FLAG_DATETIME_FILENAMES) {
+                    //Get the date and time to save.
+                    DateTime date_time;
+                    furi_hal_rtc_get_datetime(&date_time);
+
+                    furi_string_printf(
+                        filename_str,
+                        "%.2d%.2d%.2d_%.2d.%.2d.%.2d_",
+                        date_time.year,
+                        date_time.month,
+                        date_time.day,
+                        date_time.hour,
+                        date_time.minute,
+                        date_time.second);
+                }
+
                 // Extract protocol name
                 FuriString* protocol = furi_string_alloc();
                 flipper_format_rewind(ff);
@@ -192,9 +216,20 @@ bool protopirate_scene_receiver_info_on_event(void* context, SceneManagerEvent e
                     furi_string_set_str(protocol, "Unknown");
                 }
 
+                //Add the protocol
+                furi_string_cat(filename_str, protocol);
+                furi_string_free(protocol);
+
+                // Clean protocol name for filename
+                furi_string_replace_all(filename_str, "/", "_");
+                furi_string_replace_all(filename_str, " ", "_");
+
                 FuriString* saved_path = furi_string_alloc();
                 if(protopirate_storage_save_capture(
-                       ff, furi_string_get_cstr(protocol), saved_path)) {
+                       ff,
+                       furi_string_get_cstr(filename_str),
+                       saved_path,
+                       (app->option_flags & FLAG_DATETIME_FILENAMES))) {
                     // Show success notification
                     notification_message(app->notifications, &sequence_success);
                     FURI_LOG_I(TAG, "Saved to: %s", furi_string_get_cstr(saved_path));
@@ -203,7 +238,7 @@ bool protopirate_scene_receiver_info_on_event(void* context, SceneManagerEvent e
                     FURI_LOG_E(TAG, "Save failed");
                 }
 
-                furi_string_free(protocol);
+                furi_string_free(filename_str);
                 furi_string_free(saved_path);
             }
             consumed = true;
@@ -224,6 +259,11 @@ bool protopirate_scene_receiver_info_on_event(void* context, SceneManagerEvent e
                         furi_string_free(app->loaded_file_path);
                     }
                     app->loaded_file_path = furi_string_alloc_set_str(PROTOPIRATE_TEMP_FILE);
+
+                    //Allocate the About View.
+                    app->view_about = view_alloc();
+                    view_dispatcher_add_view(
+                        app->view_dispatcher, ProtoPirateViewAbout, app->view_about);
 
                     // Go to emulate scene
                     scene_manager_next_scene(app->scene_manager, ProtoPirateSceneEmulate);
@@ -247,4 +287,6 @@ void protopirate_scene_receiver_info_on_exit(void* context) {
     furi_check(context);
     ProtoPirateApp* app = context;
     widget_reset(app->widget);
+    furi_hal_power_suppress_charge_exit();
 }
+#endif //ENABLE_RECEIVER_SCENE

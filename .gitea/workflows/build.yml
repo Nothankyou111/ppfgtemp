@@ -16,25 +16,25 @@ jobs:
           - name: OFW dev channel
             sdk-channel: dev
             fap-name: ofw_dev
-          #- name: OFW release channel
-          #  sdk-channel: release
-          #  fap-name: ofw_release
+          - name: OFW release channel
+            sdk-channel: release
+            fap-name: ofw_release
           - name: Unleashed dev
             sdk-index-url: https://up.unleashedflip.com/directory.json
             sdk-channel: dev
             fap-name: ul_dev
-          #- name: Unleashed release
-          #  sdk-index-url: https://up.unleashedflip.com/directory.json
-          #  sdk-channel: release
-          #  fap-name: ul_release
-          #- name: Momentum dev
-          #  sdk-index-url: https://up.momentum-fw.dev/firmware/directory.json
-          #  sdk-channel: dev
-          #  fap-name: mntm_dev
-          #- name: Momentum release
-          #  sdk-index-url: https://up.momentum-fw.dev/firmware/directory.json
-          #  sdk-channel: release
-          #  fap-name: mntm_release
+          - name: Unleashed release
+            sdk-index-url: https://up.unleashedflip.com/directory.json
+            sdk-channel: release
+            fap-name: ul_release
+          - name: Momentum dev
+            sdk-index-url: https://up.momentum-fw.dev/firmware/directory.json
+            sdk-channel: dev
+            fap-name: mntm_dev
+          - name: Momentum release
+            sdk-index-url: https://up.momentum-fw.dev/firmware/directory.json
+            sdk-channel: release
+            fap-name: mntm_release
 
     name: 'ufbt: Build for ${{ matrix.name }}'
     steps:

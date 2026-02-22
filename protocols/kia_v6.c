@@ -115,7 +115,7 @@ const SubGhzProtocolEncoder kia_protocol_v6_encoder = {
     .yield = NULL,
 };
 
-const SubGhzProtocol kia_protocol_v6 = {
+const SubGhzProtocol subghz_protocol_kia_v6 = {
     .name = KIA_PROTOCOL_V6_NAME,
     .type = SubGhzProtocolTypeDynamic,
     .flag = SubGhzProtocolFlag_433 | SubGhzProtocolFlag_FM | SubGhzProtocolFlag_Decodable |
@@ -357,7 +357,7 @@ void* kia_protocol_decoder_v6_alloc(SubGhzEnvironment* environment) {
     UNUSED(environment);
     SubGhzProtocolDecoderKiaV6* instance = malloc(sizeof(SubGhzProtocolDecoderKiaV6));
     memset(instance, 0, sizeof(SubGhzProtocolDecoderKiaV6));
-    instance->base.protocol = &kia_protocol_v6;
+    instance->base.protocol = &subghz_protocol_kia_v6;
     instance->generic.protocol_name = instance->base.protocol->name;
     return instance;
 }

@@ -136,7 +136,7 @@ const SubGhzProtocolEncoder subghz_protocol_psa_encoder = {
     .yield = NULL,
 };
 #endif
-const SubGhzProtocol psa_protocol = {
+const SubGhzProtocol subghz_protocol_psa = {
     .name = PSA_PROTOCOL_NAME,
     .type = SubGhzProtocolTypeDynamic,
     .flag = SubGhzProtocolFlag_433 | SubGhzProtocolFlag_FM | SubGhzProtocolFlag_Decodable |
@@ -543,7 +543,7 @@ void* subghz_protocol_encoder_psa_alloc(SubGhzEnvironment* environment) {
 
     if(instance) {
         memset(instance, 0, sizeof(SubGhzProtocolEncoderPSA));
-        instance->base.protocol = &psa_protocol;
+        instance->base.protocol = &subghz_protocol_psa;
         instance->generic.protocol_name = instance->base.protocol->name;
 
         instance->encoder.size_upload = 600;
@@ -1114,7 +1114,7 @@ void* subghz_protocol_decoder_psa_alloc(SubGhzEnvironment* environment) {
     SubGhzProtocolDecoderPSA* instance = malloc(sizeof(SubGhzProtocolDecoderPSA));
     if(instance) {
         memset(instance, 0, sizeof(SubGhzProtocolDecoderPSA));
-        instance->base.protocol = &psa_protocol;
+        instance->base.protocol = &subghz_protocol_psa;
         instance->manchester_state = ManchesterStateMid1;
     }
     return instance;

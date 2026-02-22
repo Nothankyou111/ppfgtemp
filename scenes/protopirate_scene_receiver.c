@@ -1,6 +1,8 @@
 // scenes/protopirate_scene_receiver.c
 #include "../protopirate_app_i.h"
+#ifdef ENABLE_RECEIVER_SCENE
 #include "../helpers/protopirate_storage.h"
+#include "views/protopirate_receiver.h"
 #include <notification/notification_messages.h>
 
 #define TAG                             "ProtoPirateSceneRx"
@@ -10,10 +12,27 @@
 void protopirate_scene_receiver_view_callback(ProtoPirateCustomEvent event, void* context);
 
 static void protopirate_scene_receiver_update_statusbar(void* context) {
+    furi_check(context);
     ProtoPirateApp* app = context;
+
     FuriString* frequency_str = furi_string_alloc();
+    if(!frequency_str) {
+        FURI_LOG_E(TAG, "frequency_str allocation failed");
+        return;
+    }
     FuriString* modulation_str = furi_string_alloc();
+    if(!modulation_str) {
+        FURI_LOG_E(TAG, "modulation_str allocation failed");
+        furi_string_free(frequency_str);
+        return;
+    }
     FuriString* history_stat_str = furi_string_alloc();
+    if(!history_stat_str) {
+        FURI_LOG_E(TAG, "history_stat_str allocation failed");
+        furi_string_free(frequency_str);
+        furi_string_free(modulation_str);
+        return;
+    }
 
     protopirate_get_frequency_modulation(app, frequency_str, modulation_str);
 
@@ -23,21 +42,11 @@ static void protopirate_scene_receiver_update_statusbar(void* context) {
         is_external = radio_device_loader_is_external(app->txrx->radio_device);
     }
 
-    // Show auto-save indicator in the history count area
-    if(app->auto_save) {
-        furi_string_printf(
-            history_stat_str,
-            "%u/%u",
-            protopirate_history_get_item(app->txrx->history),
-            PROTOPIRATE_DISPLAY_HISTORY_MAX);
-    } else {
-        furi_string_printf(
-            history_stat_str,
-            "%u/%u",
-            protopirate_history_get_item(app->txrx->history),
-            PROTOPIRATE_DISPLAY_HISTORY_MAX);
-    }
-
+    furi_string_printf(
+        history_stat_str,
+        "%u/%u",
+        protopirate_history_get_item(app->txrx->history),
+        PROTOPIRATE_DISPLAY_HISTORY_MAX);
     // Pass actual external radio status
     protopirate_view_receiver_add_data_statusbar(
         app->protopirate_receiver,
@@ -56,12 +65,18 @@ static void protopirate_scene_receiver_callback(
     SubGhzProtocolDecoderBase* decoder_base,
     void* context) {
     UNUSED(receiver);
+    furi_check(decoder_base);
     furi_check(context);
     ProtoPirateApp* app = context;
 
     FURI_LOG_I(TAG, "=== SIGNAL DECODED ===");
 
     FuriString* str_buff = furi_string_alloc();
+    if(!str_buff) {
+        FURI_LOG_E(TAG, "str_buff allocation failed");
+        return;
+    }
+
     subghz_protocol_decoder_base_get_string(decoder_base, str_buff);
     FURI_LOG_I(TAG, "%s", furi_string_get_cstr(str_buff));
 
@@ -75,6 +90,11 @@ static void protopirate_scene_receiver_callback(
             protopirate_history_get_item(app->txrx->history));
 
         FuriString* item_name = furi_string_alloc();
+        if(!item_name) {
+            FURI_LOG_E(TAG, "item_name allocation failed");
+            return;
+        }
+
         protopirate_history_get_text_item_menu(
             app->txrx->history, item_name, protopirate_history_get_item(app->txrx->history) - 1);
 
@@ -88,31 +108,56 @@ static void protopirate_scene_receiver_callback(
         protopirate_view_receiver_set_idx_menu(app->protopirate_receiver, last_index);
 
         // Auto-save if enabled
-        if(app->auto_save) {
+        if(app->option_flags & FLAG_AUTO_SAVE) {
             FlipperFormat* ff = protopirate_history_get_raw_data(
                 app->txrx->history, protopirate_history_get_item(app->txrx->history) - 1);
 
             if(ff) {
+                FuriString* saved_path = furi_string_alloc();
+                FuriString* file_name_str = furi_string_alloc();
+
+                if(app->option_flags & FLAG_DATETIME_FILENAMES) {
+                    //Get the date and time to save.
+                    DateTime date_time;
+                    furi_hal_rtc_get_datetime(&date_time);
+                    furi_string_printf(
+                        file_name_str,
+                        "%.2d%.2d%.2d_%.2d.%.2d.%.2d_",
+                        date_time.year,
+                        date_time.month,
+                        date_time.day,
+                        date_time.hour,
+                        date_time.minute,
+                        date_time.second);
+                }
+
+                // Extract protocol name
                 FuriString* protocol = furi_string_alloc();
                 flipper_format_rewind(ff);
                 if(!flipper_format_read_string(ff, "Protocol", protocol)) {
                     furi_string_set_str(protocol, "Unknown");
                 }
 
-                // Clean protocol name for filename
-                furi_string_replace_all(protocol, "/", "_");
-                furi_string_replace_all(protocol, " ", "_");
+                //Add the protocol
+                furi_string_cat(file_name_str, protocol);
+                furi_string_free(protocol);
 
-                FuriString* saved_path = furi_string_alloc();
+                // Clean protocol name for filename
+                furi_string_replace_all(file_name_str, "/", "_");
+                furi_string_replace_all(file_name_str, " ", "_");
+
                 if(protopirate_storage_save_capture(
-                       ff, furi_string_get_cstr(protocol), saved_path)) {
+                       ff,
+                       furi_string_get_cstr(file_name_str),
+                       saved_path,
+                       (app->option_flags & FLAG_DATETIME_FILENAMES))) {
                     FURI_LOG_I(TAG, "Auto-saved: %s", furi_string_get_cstr(saved_path));
                     notification_message(app->notifications, &sequence_double_vibro);
                 } else {
                     FURI_LOG_E(TAG, "Auto-save failed");
                 }
 
-                furi_string_free(protocol);
+                furi_string_free(file_name_str);
                 furi_string_free(saved_path);
             }
         }
@@ -133,6 +178,7 @@ static void protopirate_scene_receiver_callback(
 }
 
 void protopirate_scene_receiver_on_enter(void* context) {
+    furi_check(context);
     ProtoPirateApp* app = context;
 
     FURI_LOG_I(TAG, "=== ENTERING RECEIVER SCENE ===");
@@ -141,12 +187,17 @@ void protopirate_scene_receiver_on_enter(void* context) {
 #ifndef REMOVE_LOGS
     bool is_external =
         app->txrx->radio_device ? radio_device_loader_is_external(app->txrx->radio_device) : false;
-    const char* device_name = subghz_devices_get_name(app->txrx->radio_device);
+    const char* device_name =
+        app->txrx->radio_device ? subghz_devices_get_name(app->txrx->radio_device) : NULL;
     FURI_LOG_I(TAG, "Radio device: %s", device_name ? device_name : "NULL");
     FURI_LOG_I(TAG, "Is External: %s", is_external ? "YES" : "NO");
     FURI_LOG_I(TAG, "Frequency: %lu Hz", app->txrx->preset->frequency);
     FURI_LOG_I(TAG, "Modulation: %s", furi_string_get_cstr(app->txrx->preset->name));
-    FURI_LOG_I(TAG, "Auto-save: %s", app->auto_save ? "ON" : "OFF");
+    FURI_LOG_I(TAG, "Auto-save: %s", (settings->option_flags & FLAG_AUTO_SAVE) ? "ON" : "OFF");
+    FURI_LOG_I(
+        TAG,
+        "Date-Time Filenames: %s",
+        (settings->option_flags & FLAG_DATETiME_FILENAMES) ? "ON" : "OFF");
 #endif
 
     // Allocate history
@@ -188,13 +239,24 @@ void protopirate_scene_receiver_on_enter(void* context) {
         app->txrx->hopper_state = ProtoPirateHopperStateRunning;
     }
 
-    // Get preset data
-    const char* preset_name = furi_string_get_cstr(app->txrx->preset->name);
-    uint8_t* preset_data = subghz_setting_get_preset_data_by_name(app->setting, preset_name);
+    //Forward declare preset now we have a branch path..
+    const char* preset_name;
+    uint8_t* preset_data;
 
-    if(preset_data == NULL) {
-        FURI_LOG_E(TAG, "Failed to get preset data for %s, using AM650", preset_name);
-        preset_data = subghz_setting_get_preset_data_by_name(app->setting, "AM650");
+    //Have we got a model selected?
+    if(app->selected_model && app->selected_model->index && app->selected_model->preset &&
+       app->selected_model->preset->data_size) {
+        preset_name = furi_string_get_cstr(app->selected_model->preset->name);
+        preset_data = app->selected_model->preset->data;
+    } else {
+        // Get preset data
+        preset_name = furi_string_get_cstr(app->txrx->preset->name);
+        preset_data = subghz_setting_get_preset_data_by_name(app->setting, preset_name);
+
+        if(preset_data == NULL) {
+            FURI_LOG_E(TAG, "Failed to get preset data for %s, using AM650", preset_name);
+            preset_data = subghz_setting_get_preset_data_by_name(app->setting, "AM650");
+        }
     }
 
     // Begin receiving
@@ -213,6 +275,10 @@ void protopirate_scene_receiver_on_enter(void* context) {
     // Update lock state in view
     protopirate_view_receiver_set_lock(app->protopirate_receiver, app->lock);
 
+    // Update auto-save state in view
+    protopirate_view_receiver_set_autosave(
+        app->protopirate_receiver, (app->option_flags & FLAG_AUTO_SAVE));
+
     //Not in Sub Decode Mode
     protopirate_view_receiver_set_sub_decode_mode(app->protopirate_receiver, false);
 
@@ -221,6 +287,7 @@ void protopirate_scene_receiver_on_enter(void* context) {
 }
 
 bool protopirate_scene_receiver_on_event(void* context, SceneManagerEvent event) {
+    furi_check(context);
     ProtoPirateApp* app = context;
     bool consumed = false;
 
@@ -273,7 +340,8 @@ bool protopirate_scene_receiver_on_event(void* context, SceneManagerEvent event)
         }
 
         // Update RSSI from the correct radio device (only if initialized)
-        if(app->radio_initialized && app->txrx->txrx_state == ProtoPirateTxRxStateRx) {
+        if(app->radio_initialized && app->txrx->txrx_state == ProtoPirateTxRxStateRx &&
+           app->txrx->radio_device) {
             float rssi = subghz_devices_get_rssi(app->txrx->radio_device);
             protopirate_view_receiver_set_rssi(app->protopirate_receiver, rssi);
 
@@ -300,6 +368,7 @@ bool protopirate_scene_receiver_on_event(void* context, SceneManagerEvent event)
 }
 
 void protopirate_scene_receiver_on_exit(void* context) {
+    furi_check(context);
     ProtoPirateApp* app = context;
 
     FURI_LOG_I(TAG, "=== EXITING RECEIVER SCENE ===");
@@ -341,3 +410,4 @@ void protopirate_scene_receiver_view_callback(ProtoPirateCustomEvent event, void
     ProtoPirateApp* app = context;
     view_dispatcher_send_custom_event(app->view_dispatcher, event);
 }
+#endif //ENABLE_RECEIVER_SCENE

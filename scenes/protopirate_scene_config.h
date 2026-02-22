@@ -7,11 +7,17 @@ ADD_SCENE(protopirate, start, Start)
 ADD_SCENE(protopirate, sub_decode, SubDecode)
 #endif
 ADD_SCENE(protopirate, about, About)
+#ifdef ENABLE_RECEIVER_SCENE
 ADD_SCENE(protopirate, receiver, Receiver)
+#endif
 ADD_SCENE(protopirate, receiver_config, ReceiverConfig)
+#ifdef ENABLE_RECEIVER_SCENE
 ADD_SCENE(protopirate, receiver_info, ReceiverInfo)
+#endif
+#ifdef ENABLE_SAVED_SCENE
 ADD_SCENE(protopirate, saved, Saved)
 ADD_SCENE(protopirate, saved_info, SavedInfo)
+#endif
 #ifdef ENABLE_EMULATE_FEATURE
 ADD_SCENE(protopirate, emulate, Emulate)
 #endif

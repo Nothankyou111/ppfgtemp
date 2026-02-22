@@ -12,7 +12,11 @@
 #include <math.h>
 #include <lib/subghz/types.h>
 
+#ifdef BUILD_MAIN_APP
 #include "proto_pirate_icons.h"
+#else
+#include "proto_pirate_utils_icons.h"
+#endif
 
 #define TAG "ProtoPirateSubDecode"
 
@@ -378,8 +382,10 @@ static void close_file_handles(SubDecodeContext* ctx) {
         flipper_format_free(ctx->ff);
         ctx->ff = NULL;
     }
-    furi_record_close(RECORD_STORAGE);
-    //ctx->storage = NULL;
+    if(ctx->storage) {
+        furi_record_close(RECORD_STORAGE);
+        ctx->storage = NULL;
+    }
 }
 
 // Receiver view callback for history navigation
@@ -425,6 +431,8 @@ void protopirate_scene_sub_decode_on_enter(void* context) {
         app->txrx->history = protopirate_history_alloc();
         if(!app->txrx->history) {
             FURI_LOG_E(TAG, "Failed to allocate history!");
+            free(g_decode_ctx);
+            g_decode_ctx = NULL;
             return;
         }
     }
@@ -537,6 +545,23 @@ bool protopirate_scene_sub_decode_on_event(void* context, SceneManagerEvent even
                 protopirate_history_get_raw_data(ctx->history, ctx->selected_history_index);
 
             if(ff) {
+                FuriString* saved_path = furi_string_alloc();
+                FuriString* file_name_str = furi_string_alloc();
+
+                if(app->option_flags & FLAG_DATETIME_FILENAMES) {
+                    //Get the date and time to save.
+                    DateTime date_time;
+                    furi_hal_rtc_get_datetime(&date_time);
+                    furi_string_printf(
+                        file_name_str,
+                        "%.2d%.2d%.2d_%.2d.%.2d.%.2d_",
+                        date_time.year,
+                        date_time.month,
+                        date_time.day,
+                        date_time.hour,
+                        date_time.minute,
+                        date_time.second);
+                }
                 // Extract protocol name
                 FuriString* protocol = furi_string_alloc();
                 flipper_format_rewind(ff);
@@ -544,19 +569,25 @@ bool protopirate_scene_sub_decode_on_event(void* context, SceneManagerEvent even
                     furi_string_set_str(protocol, "Unknown");
                 }
 
-                // Clean protocol name for filename
-                furi_string_replace_all(protocol, "/", "_");
-                furi_string_replace_all(protocol, " ", "_");
+                //Add the protocol
+                furi_string_cat(file_name_str, protocol);
+                furi_string_free(protocol);
 
-                FuriString* saved_path = furi_string_alloc();
+                // Clean protocol name for filename
+                furi_string_replace_all(file_name_str, "/", "_");
+                furi_string_replace_all(file_name_str, " ", "_");
+
                 if(protopirate_storage_save_capture(
-                       ff, furi_string_get_cstr(protocol), saved_path)) {
+                       ff,
+                       furi_string_get_cstr(file_name_str),
+                       saved_path,
+                       (app->option_flags & FLAG_DATETIME_FILENAMES))) {
                     notification_message(app->notifications, &sequence_success);
                 } else {
                     notification_message(app->notifications, &sequence_error);
                 }
 
-                furi_string_free(protocol);
+                furi_string_free(file_name_str);
                 furi_string_free(saved_path);
             } else {
                 FURI_LOG_E(
@@ -714,7 +745,16 @@ bool protopirate_scene_sub_decode_on_event(void* context, SceneManagerEvent even
             FURI_LOG_I(TAG, "StartingWorker: Reading file metadata");
 
             Storage* storage = furi_record_open(RECORD_STORAGE);
+            if(!storage) {
+                FURI_LOG_E(TAG, "Failed to open storage");
+                break;
+            }
             FlipperFormat* fff_data_file = flipper_format_file_alloc(storage);
+            if(!fff_data_file) {
+                FURI_LOG_E(TAG, "Failed to allocate FlipperFormat");
+                break;
+            }
+
             FuriString* temp_str = furi_string_alloc();
             bool setup_ok = false;
 
@@ -803,9 +843,11 @@ bool protopirate_scene_sub_decode_on_event(void* context, SceneManagerEvent even
                 setup_ok = true;
             } while(false);
 
-            flipper_format_free(fff_data_file);
+            if(fff_data_file) flipper_format_free(fff_data_file);
+
+            if(storage) furi_record_close(RECORD_STORAGE);
+
             furi_string_free(temp_str);
-            furi_record_close(RECORD_STORAGE);
 
             if(!setup_ok) {
                 furi_string_set(ctx->result, "Failed to read file metadata");
@@ -1119,6 +1161,11 @@ void protopirate_scene_sub_decode_on_exit(void* context) {
 
     view_set_draw_callback(app->view_about, NULL);
     view_set_input_callback(app->view_about, NULL);
+
+    //Remove About View.
+    view_dispatcher_remove_view(app->view_dispatcher, ProtoPirateViewAbout);
+    view_free(app->view_about);
+
     widget_reset(app->widget);
 
     protopirate_view_receiver_reset_menu(app->protopirate_receiver);

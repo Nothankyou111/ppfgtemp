@@ -2,45 +2,53 @@
 #include "../protopirate_app_i.h"
 
 enum ProtoPirateSettingIndex {
+#ifdef BUILD_MAIN_APP
+    ProtoPirateSettingIndexCarModel,
+#endif
     ProtoPirateSettingIndexFrequency,
     ProtoPirateSettingIndexHopping,
     ProtoPirateSettingIndexModulation,
+#ifdef ENABLE_EMULATE_FEATURE
     ProtoPirateSettingIndexTXPower,
+#endif
     ProtoPirateSettingIndexAutoSave,
+    ProtoPirateSettingIndexDateTimeFilenames,
+#ifdef BUILD_MAIN_APP
     ProtoPirateSettingIndexLock,
+#endif
 };
 
-#define HOPPING_COUNT 2
-const char* const hopping_text[HOPPING_COUNT] = {
+#define ON_OFF_COUNT 2
+const char* const on_off_text[ON_OFF_COUNT] = {
     "OFF",
     "ON",
 };
 
-const uint32_t hopping_value[HOPPING_COUNT] = {
+const uint32_t hopping_value[ON_OFF_COUNT] = {
     ProtoPirateHopperStateOFF,
     ProtoPirateHopperStateRunning,
 };
 
-#define AUTO_SAVE_COUNT 2
-const char* const auto_save_text[AUTO_SAVE_COUNT] = {
-    "OFF",
-    "ON",
+#define TIME_SEQ_COUNT 2
+const char* const sequence_time_text[ON_OFF_COUNT] = {
+    "Sequential",
+    "Time",
 };
 
-#define TX_POWER_COUNT 11
+#ifdef ENABLE_EMULATE_FEATURE
+#define TX_POWER_COUNT 9
 const char* const tx_power_text[TX_POWER_COUNT] = {
     "Preset",
-    "12dBm",
-    "10dBm",
+    "10dBm +",
     "7dBm",
     "5dBm",
     "0dBm",
-    "-6dBm",
     "-10dBm",
     "-15dBm",
     "-20dBm",
     "-30dBm",
 };
+#endif
 
 uint8_t protopirate_scene_receiver_config_next_frequency(const uint32_t value, void* context) {
     furi_check(context);
@@ -127,7 +135,7 @@ static void protopirate_scene_receiver_config_set_hopping_running(VariableItem* 
     ProtoPirateApp* app = variable_item_get_context(item);
     uint8_t index = variable_item_get_current_value_index(item);
 
-    variable_item_set_current_value_text(item, hopping_text[index]);
+    variable_item_set_current_value_text(item, on_off_text[index]);
     if(hopping_value[index] == ProtoPirateHopperStateOFF) {
         char text_buf[10] = {0};
         snprintf(
@@ -159,14 +167,129 @@ static void protopirate_scene_receiver_config_set_hopping_running(VariableItem* 
     app->txrx->hopper_state = hopping_value[index];
 }
 
+#ifdef BUILD_MAIN_APP
+static void protopirate_scene_receiver_config_set_model(VariableItem* item) {
+    ProtoPirateApp* app = variable_item_get_context(item);
+    uint8_t index = variable_item_get_current_value_index(item);
+    uint16_t model_index;
+
+    //Get current selection
+    model_index =
+        (app->selected_model && app->selected_model->index) ? app->selected_model->index : 0;
+
+    //Cycle the index.
+    if(index == 255) {
+        if(model_index > 0)
+            model_index--;
+        else
+            model_index = app->car_models_count;
+    } else if(index == 1) {
+        if(model_index < app->car_models_count)
+            model_index++;
+        else
+            model_index = 0;
+    }
+
+    //Get a Car Model object, and dont forget to shut down on app free!
+    protopirate_model_get_by_index(app, &app->selected_model, model_index);
+
+    //Add he car model the list, with the correct selection and text.
+    variable_item_set_item_label(item, furi_string_get_cstr(app->selected_model->name));
+    variable_item_set_current_value_text(item, "");
+    variable_item_set_current_value_index(item, 0);
+
+    //set the Preset, Frequency and Hopper off or restore.
+    if(!model_index) {
+        //Restore Original Preset.
+        protopirate_scene_receiver_config_set_frequency(app->freq_menu);
+        protopirate_scene_receiver_config_set_hopping_running(app->hop_menu);
+        if(app->selected_model->last_preset_index > -1) {
+            furi_string_set(
+                app->txrx->preset->name,
+                subghz_setting_get_preset_name(
+                    app->setting, app->selected_model->last_preset_index));
+
+            protopirate_preset_init(
+                app,
+                subghz_setting_get_preset_name(
+                    app->setting, app->selected_model->last_preset_index),
+                app->txrx->preset->frequency,
+                subghz_setting_get_preset_data(
+                    app->setting, app->selected_model->last_preset_index),
+                subghz_setting_get_preset_data_size(
+                    app->setting, app->selected_model->last_preset_index));
+
+            variable_item_set_current_value_text(
+                app->preset_menu,
+                subghz_setting_get_preset_name(
+                    app->setting, app->selected_model->last_preset_index));
+
+            app->selected_model->last_preset_index = -1;
+        } else {
+            protopirate_preset_init(
+                app,
+                subghz_setting_get_preset_name(app->setting, index),
+                app->txrx->preset->frequency,
+                subghz_setting_get_preset_data(app->setting, index),
+                subghz_setting_get_preset_data_size(app->setting, index));
+
+            variable_item_set_current_value_text(
+                app->preset_menu, subghz_setting_get_preset_name(app->setting, index));
+        }
+    } else {
+        variable_item_set_current_value_text(app->freq_menu, "Locked");
+        variable_item_set_current_value_text(app->hop_menu, "Locked");
+        app->txrx->hopper_state = ProtoPirateHopperStateOFF;
+        app->txrx->preset->frequency = app->selected_model->preset->frequency;
+
+        //Save Original Prseet.
+        if(app->selected_model->last_preset_index == -1)
+            app->selected_model->last_preset_index = subghz_setting_get_inx_preset_by_name(
+                app->setting, furi_string_get_cstr(app->txrx->preset->name));
+
+        protopirate_preset_init(
+            app,
+            furi_string_get_cstr(app->selected_model->preset->name),
+            app->selected_model->preset->frequency,
+            app->selected_model->preset->data,
+            app->selected_model->preset->data_size);
+    }
+
+    //Lock or Unlock the menus.
+    bool lock = (app->selected_model->index != 0);
+    variable_item_set_locked(app->freq_menu, lock, "Turn off\nCar Model\nto do that!");
+    variable_item_set_locked(app->hop_menu, lock, "Turn off\nCar Model\nto do that!");
+    variable_item_set_locked(app->preset_menu, lock, "Turn off\nCar Model\nto do that!");
+}
+#endif
+
 static void protopirate_scene_receiver_config_set_auto_save(VariableItem* item) {
     ProtoPirateApp* app = variable_item_get_context(item);
     uint8_t index = variable_item_get_current_value_index(item);
 
-    app->auto_save = (index == 1);
-    variable_item_set_current_value_text(item, auto_save_text[index]);
+    if(index == 1) {
+        if(!(app->option_flags & FLAG_AUTO_SAVE)) app->option_flags += FLAG_AUTO_SAVE;
+    } else {
+        if(app->option_flags & FLAG_AUTO_SAVE) app->option_flags -= FLAG_AUTO_SAVE;
+    }
+    variable_item_set_current_value_text(item, on_off_text[index]);
 }
 
+static void protopirate_scene_receiver_config_set_datetime_filenames(VariableItem* item) {
+    ProtoPirateApp* app = variable_item_get_context(item);
+    uint8_t index = variable_item_get_current_value_index(item);
+
+    if(index == 1) {
+        if(!(app->option_flags & FLAG_DATETIME_FILENAMES))
+            app->option_flags += FLAG_DATETIME_FILENAMES;
+    } else {
+        if(app->option_flags & FLAG_DATETIME_FILENAMES)
+            app->option_flags -= FLAG_DATETIME_FILENAMES;
+    }
+    variable_item_set_current_value_text(item, sequence_time_text[index]);
+}
+
+#ifdef ENABLE_EMULATE_FEATURE
 static void protopirate_scene_receiver_config_set_tx_power(VariableItem* item) {
     ProtoPirateApp* app = variable_item_get_context(item);
     uint8_t index = variable_item_get_current_value_index(item);
@@ -174,22 +297,62 @@ static void protopirate_scene_receiver_config_set_tx_power(VariableItem* item) {
     app->tx_power = index;
     variable_item_set_current_value_text(item, tx_power_text[index]);
 }
+#endif
 
+#ifdef BUILD_MAIN_APP
 static void
     protopirate_scene_receiver_config_var_list_enter_callback(void* context, uint32_t index) {
     furi_check(context);
     ProtoPirateApp* app = context;
-    if(index == ProtoPirateSettingIndexLock) {
+
+#if BUILD_MAIN_APP
+    if(index == ProtoPirateSettingIndexCarModel) {
+        variable_item_set_current_value_index(app->model_menu, 1);
+        protopirate_scene_receiver_config_set_model(app->model_menu);
+    } else
+#endif
+        if(index == ProtoPirateSettingIndexLock) {
         view_dispatcher_send_custom_event(
             app->view_dispatcher, ProtoPirateCustomEventSceneSettingLock);
     }
 }
+#endif
 
 void protopirate_scene_receiver_config_on_enter(void* context) {
     ProtoPirateApp* app = context;
     VariableItem* item;
     uint8_t value_index;
 
+    // Variable Item List
+    app->variable_item_list = variable_item_list_alloc();
+    view_dispatcher_add_view(
+        app->view_dispatcher,
+        ProtoPirateViewVariableItemList,
+        variable_item_list_get_view(app->variable_item_list));
+
+//Get a Car Model object, and dont forget to shut down on app free!
+#ifdef BUILD_MAIN_APP
+    int16_t tmp = -1;
+    if(app->selected_model) {
+        tmp = app->selected_model->last_preset_index;
+        protopirate_model_get_by_index(app, &app->selected_model, app->selected_model->index);
+    } else {
+        protopirate_model_get_by_index(app, &app->selected_model, 0);
+    }
+
+    //Add he car model the list, with the correct selection and text.
+    item = variable_item_list_add(
+        app->variable_item_list,
+        furi_string_get_cstr(app->selected_model->name),
+        0, //Plus NONE
+        protopirate_scene_receiver_config_set_model,
+        app);
+
+    //variable_item_set_current_value_in
+    app->selected_model->last_preset_index = tmp;
+    app->model_menu = item;
+#endif
+    //Frequency Menu Item.
     item = variable_item_list_add(
         app->variable_item_list,
         "Frequency:",
@@ -201,6 +364,13 @@ void protopirate_scene_receiver_config_on_enter(void* context) {
     scene_manager_set_scene_state(
         app->scene_manager, ProtoPirateSceneReceiverConfig, (uint32_t)item);
     variable_item_set_current_value_index(item, value_index);
+#ifdef BUILD_MAIN_APP
+    variable_item_set_locked(
+        item,
+        app->selected_model && (app->selected_model->index),
+        "Turn off\nCar Model\nto do that!");
+    app->freq_menu = item;
+#endif
     char text_buf[10] = {0};
     snprintf(
         text_buf,
@@ -210,16 +380,24 @@ void protopirate_scene_receiver_config_on_enter(void* context) {
         (subghz_setting_get_frequency(app->setting, value_index) % 1000000) / 10000);
     variable_item_set_current_value_text(item, text_buf);
 
+    //Hopping Menu Item
     item = variable_item_list_add(
         app->variable_item_list,
         "Hopping:",
-        HOPPING_COUNT,
+        ON_OFF_COUNT,
         protopirate_scene_receiver_config_set_hopping_running,
         app);
     value_index = protopirate_scene_receiver_config_hopper_value_index(
-        app->txrx->hopper_state, hopping_value, HOPPING_COUNT, app);
+        app->txrx->hopper_state, hopping_value, ON_OFF_COUNT, app);
     variable_item_set_current_value_index(item, value_index);
-    variable_item_set_current_value_text(item, hopping_text[value_index]);
+    variable_item_set_current_value_text(item, on_off_text[value_index]);
+#ifdef BUILD_MAIN_APP
+    variable_item_set_locked(
+        item,
+        app->selected_model && (app->selected_model->index),
+        "Turn off\nCar Model\nto do that!");
+    app->hop_menu = item;
+#endif
 
     item = variable_item_list_add(
         app->variable_item_list,
@@ -232,7 +410,15 @@ void protopirate_scene_receiver_config_on_enter(void* context) {
     variable_item_set_current_value_index(item, value_index);
     variable_item_set_current_value_text(
         item, subghz_setting_get_preset_name(app->setting, value_index));
+#ifdef BUILD_MAIN_APP
+    variable_item_set_locked(
+        item,
+        app->selected_model && (app->selected_model->index),
+        "Turn off\nCar Model\nto do that!");
+    app->preset_menu = item;
+#endif
 
+#ifdef ENABLE_EMULATE_FEATURE
     // TX power option
     item = variable_item_list_add(
         app->variable_item_list,
@@ -242,21 +428,36 @@ void protopirate_scene_receiver_config_on_enter(void* context) {
         app);
     variable_item_set_current_value_index(item, app->tx_power);
     variable_item_set_current_value_text(item, tx_power_text[app->tx_power]);
-
+#endif
     // Auto-save option
     item = variable_item_list_add(
         app->variable_item_list,
         "Auto-Save:",
-        AUTO_SAVE_COUNT,
+        ON_OFF_COUNT,
         protopirate_scene_receiver_config_set_auto_save,
         app);
-    variable_item_set_current_value_index(item, app->auto_save ? 1 : 0);
-    variable_item_set_current_value_text(item, auto_save_text[app->auto_save ? 1 : 0]);
+    variable_item_set_current_value_index(item, (app->option_flags & FLAG_AUTO_SAVE) ? 1 : 0);
+    variable_item_set_current_value_text(
+        item, on_off_text[(app->option_flags & FLAG_AUTO_SAVE) ? 1 : 0]);
 
+    // Date/time filenames option
+    item = variable_item_list_add(
+        app->variable_item_list,
+        "Filenames:",
+        2,
+        protopirate_scene_receiver_config_set_datetime_filenames,
+        app);
+    variable_item_set_current_value_index(
+        item, (app->option_flags & FLAG_DATETIME_FILENAMES) ? 1 : 0);
+    variable_item_set_current_value_text(
+        item, sequence_time_text[(app->option_flags & FLAG_DATETIME_FILENAMES) ? 1 : 0]);
+
+    //Lock Keyboard option
+#ifdef BUILD_MAIN_APP
     variable_item_list_add(app->variable_item_list, "Lock Keyboard", 1, NULL, NULL);
     variable_item_list_set_enter_callback(
         app->variable_item_list, protopirate_scene_receiver_config_var_list_enter_callback, app);
-
+#endif
     view_dispatcher_switch_to_view(app->view_dispatcher, ProtoPirateViewVariableItemList);
 }
 
@@ -276,6 +477,21 @@ bool protopirate_scene_receiver_config_on_event(void* context, SceneManagerEvent
 
 void protopirate_scene_receiver_config_on_exit(void* context) {
     ProtoPirateApp* app = context;
-    variable_item_list_set_selected_item(app->variable_item_list, 0);
-    variable_item_list_reset(app->variable_item_list);
+
+    //Reset the list before exit.
+    //variable_item_list_set_selected_item(app->variable_item_list, 0);
+    //variable_item_list_reset(app->variable_item_list);
+
+    view_dispatcher_switch_to_view(app->view_dispatcher, ProtoPirateViewSubmenu);
+
+    view_dispatcher_remove_view(app->view_dispatcher, ProtoPirateViewVariableItemList);
+    variable_item_list_free(app->variable_item_list);
+
+//Get rid of dangling pointers
+#ifdef BUILD_MAIN_APP
+    app->model_menu = NULL;
+    app->freq_menu = NULL;
+    app->hop_menu = NULL;
+    app->preset_menu = NULL;
+#endif
 }

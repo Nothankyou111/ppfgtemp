@@ -55,7 +55,7 @@ const SubGhzProtocolEncoder kia_protocol_v2_encoder = {
     .yield = kia_protocol_encoder_v2_yield,
 };
 
-const SubGhzProtocol kia_protocol_v2 = {
+const SubGhzProtocol subghz_protocol_kia_v2 = {
     .name = KIA_PROTOCOL_V2_NAME,
     .type = SubGhzProtocolTypeDynamic,
     .flag = SubGhzProtocolFlag_315 | SubGhzProtocolFlag_433 | SubGhzProtocolFlag_FM |
@@ -66,17 +66,17 @@ const SubGhzProtocol kia_protocol_v2 = {
 };
 
 static uint8_t kia_v2_calculate_crc(uint64_t data) {
-    uint32_t serial = (uint32_t)((data >> 20) & 0xFFFFFFFF);
+    // Remove the CRC nibble (last 4 bits) to get the actual data
+    uint64_t data_without_crc = data >> 4;
 
-    uint32_t uVar4 = (uint32_t)(data & 0xFFFFFFFF);
-
+    // Extract 6 bytes from the data
     uint8_t bytes[6];
-    bytes[0] = (uint8_t)(uVar4 >> 0x14);
-    bytes[1] = (uint8_t)((uVar4 >> 0x1c) | (serial << 4));
-    bytes[2] = (uint8_t)(serial >> 4);
-    bytes[3] = (uint8_t)(serial >> 0xc);
-    bytes[4] = (uint8_t)(uVar4 >> 4);
-    bytes[5] = (uint8_t)(uVar4 >> 0xc);
+    bytes[0] = (uint8_t)(data_without_crc);
+    bytes[1] = (uint8_t)(data_without_crc >> 8);
+    bytes[2] = (uint8_t)(data_without_crc >> 16);
+    bytes[3] = (uint8_t)(data_without_crc >> 24);
+    bytes[4] = (uint8_t)(data_without_crc >> 32);
+    bytes[5] = (uint8_t)(data_without_crc >> 40);
 
     uint8_t crc = 0;
     for(int i = 0; i < 6; i++) {
@@ -137,7 +137,7 @@ void* kia_protocol_encoder_v2_alloc(SubGhzEnvironment* environment) {
     UNUSED(environment);
     SubGhzProtocolEncoderKiaV2* instance = malloc(sizeof(SubGhzProtocolEncoderKiaV2));
 
-    instance->base.protocol = &kia_protocol_v2;
+    instance->base.protocol = &subghz_protocol_kia_v2;
     instance->generic.protocol_name = instance->base.protocol->name;
 
     instance->encoder.repeat = 10;
@@ -358,7 +358,7 @@ LevelDuration kia_protocol_encoder_v2_yield(void* context) {
 void* kia_protocol_decoder_v2_alloc(SubGhzEnvironment* environment) {
     UNUSED(environment);
     SubGhzProtocolDecoderKiaV2* instance = malloc(sizeof(SubGhzProtocolDecoderKiaV2));
-    instance->base.protocol = &kia_protocol_v2;
+    instance->base.protocol = &subghz_protocol_kia_v2;
     instance->generic.protocol_name = instance->base.protocol->name;
     return instance;
 }
@@ -566,17 +566,20 @@ void kia_protocol_decoder_v2_get_string(void* context, FuriString* output) {
 
     uint8_t crc = instance->generic.data & 0x0F;
 
+    bool crc_valid = crc == kia_v2_calculate_crc(instance->generic.data);
+
     furi_string_cat_printf(
         output,
         "%s %dbit\r\n"
         "Key:%013llX\r\n"
         "Sn:%08lX Btn:%X\r\n"
-        "Cnt:%03lX CRC:%X\r\n",
+        "Cnt:%03lX CRC:%X - %s\r\n",
         instance->generic.protocol_name,
         instance->generic.data_count_bit,
         instance->generic.data,
         instance->generic.serial,
         instance->generic.btn,
         instance->generic.cnt,
-        crc);
+        crc,
+        crc_valid ? "OK" : "BAD");
 }
