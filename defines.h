@@ -1,17 +1,9 @@
 #pragma once
-#include <furi/core/log.h>
 
-//This is done by the APPLICATiON.FAM now.
-//#define BUILD_MAIN_APP
-
-#ifdef BUILD_MAIN_APP
-#define ENABLE_EMULATE_FEATURE
-#define ENABLE_RECEIVER_SCENE
-#define ENABLE_SAVED_SCENE
-#else
-#define ENABLE_TIMING_TUNER_SCENE
+//#define ENABLE_TIMING_TUNER_SCENE
 #define ENABLE_SUB_DECODE_SCENE
-#endif
+
+#define ENABLE_EMULATE_FEATURE
 
 #define REMOVE_LOGS
 

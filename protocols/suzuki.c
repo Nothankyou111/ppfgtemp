@@ -95,7 +95,7 @@ const SubGhzProtocolEncoder subghz_protocol_suzuki_encoder = {
     .yield = subghz_protocol_encoder_suzuki_yield,
 };
 
-const SubGhzProtocol subghz_protocol_suzuki = {
+const SubGhzProtocol suzuki_protocol = {
     .name = SUZUKI_PROTOCOL_NAME,
     .type = SubGhzProtocolTypeDynamic,
     .flag = SubGhzProtocolFlag_433 | SubGhzProtocolFlag_AM | SubGhzProtocolFlag_Decodable |
@@ -111,7 +111,7 @@ const SubGhzProtocol subghz_protocol_suzuki = {
 void* subghz_protocol_decoder_suzuki_alloc(SubGhzEnvironment* environment) {
     UNUSED(environment);
     SubGhzProtocolDecoderSuzuki* instance = malloc(sizeof(SubGhzProtocolDecoderSuzuki));
-    instance->base.protocol = &subghz_protocol_suzuki;
+    instance->base.protocol = &suzuki_protocol;
     instance->generic.protocol_name = instance->base.protocol->name;
     return instance;
 }
@@ -307,7 +307,7 @@ void subghz_protocol_decoder_suzuki_get_string(void* context, FuriString* output
 void* subghz_protocol_encoder_suzuki_alloc(SubGhzEnvironment* environment) {
     UNUSED(environment);
     SubGhzProtocolEncoderSuzuki* instance = malloc(sizeof(SubGhzProtocolEncoderSuzuki));
-    instance->base.protocol = &subghz_protocol_suzuki;
+    instance->base.protocol = &suzuki_protocol;
     instance->generic.protocol_name = instance->base.protocol->name;
     instance->encoder.upload = NULL;
     instance->encoder.is_running = false;

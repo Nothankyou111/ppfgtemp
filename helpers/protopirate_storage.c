@@ -32,10 +32,7 @@ static void sanitize_filename(const char* input, char* output, size_t output_siz
     output[j] = '\0';
 }
 
-bool protopirate_storage_get_next_filename(
-    const char* protocol_name,
-    FuriString* out_filename,
-    bool dont_add_zero) {
+bool protopirate_storage_get_next_filename(const char* protocol_name, FuriString* out_filename) {
     if(!protocol_name || !out_filename) return false;
     Storage* storage = furi_record_open(RECORD_STORAGE);
     FuriString* temp_path = furi_string_alloc();
@@ -46,18 +43,13 @@ bool protopirate_storage_get_next_filename(
     sanitize_filename(protocol_name, safe_name, sizeof(safe_name));
 
     while(!found && index <= 999) {
-        if(index == 0 && dont_add_zero) {
-            furi_string_printf(
-                temp_path, "%s/%s%s", PROTOPIRATE_APP_FOLDER, safe_name, PROTOPIRATE_APP_EXTENSION);
-        } else {
-            furi_string_printf(
-                temp_path,
-                "%s/%s_%03lu%s",
-                PROTOPIRATE_APP_FOLDER,
-                safe_name,
-                (unsigned long)index,
-                PROTOPIRATE_APP_EXTENSION);
-        }
+        furi_string_printf(
+            temp_path,
+            "%s/%s_%03lu%s",
+            PROTOPIRATE_APP_FOLDER,
+            safe_name,
+            (unsigned long)index,
+            PROTOPIRATE_APP_EXTENSION);
 
         if(!storage_file_exists(storage, furi_string_get_cstr(temp_path))) {
             furi_string_set(out_filename, temp_path);
@@ -330,8 +322,7 @@ void protopirate_storage_delete_temp(void) {
 bool protopirate_storage_save_capture(
     FlipperFormat* flipper_format,
     const char* protocol_name,
-    FuriString* out_path,
-    bool datetime_filenames) {
+    FuriString* out_path) {
     furi_check(flipper_format);
     furi_check(protocol_name);
     furi_check(out_path);
@@ -343,7 +334,7 @@ bool protopirate_storage_save_capture(
 
     FuriString* file_path = furi_string_alloc();
 
-    if(!protopirate_storage_get_next_filename(protocol_name, file_path, datetime_filenames)) {
+    if(!protopirate_storage_get_next_filename(protocol_name, file_path)) {
         FURI_LOG_E(TAG, "Failed to get next filename");
         furi_string_free(file_path);
         return false;

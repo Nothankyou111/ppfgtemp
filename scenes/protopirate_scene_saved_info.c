@@ -1,7 +1,5 @@
 // scenes/protopirate_scene_saved_info.c
 #include "../protopirate_app_i.h"
-#ifdef ENABLE_SAVED_SCENE
-
 #include "../helpers/protopirate_storage.h"
 
 #define TAG "ProtoPirateSceneSavedInfo"
@@ -118,6 +116,8 @@ void protopirate_scene_saved_info_on_enter(void* context) {
         furi_string_cat_printf(info_str, "Protocol: %s\n", furi_string_get_cstr(temp_str));
     }
     if(furi_string_cmp_str(temp_str, "Scher-Khan") == 0) {
+        is_emu_off = true;
+    } else if(furi_string_cmp_str(temp_str, "Kia V5") == 0) {
         is_emu_off = true;
     } else if(furi_string_cmp_str(temp_str, "Kia V6") == 0) {
         is_emu_off = true;
@@ -268,9 +268,6 @@ bool protopirate_scene_saved_info_on_event(void* context, SceneManagerEvent even
 #ifdef ENABLE_EMULATE_FEATURE
         if(event.event == ProtoPirateCustomEventSavedInfoEmulate && !is_emu_off) {
             FURI_LOG_I(TAG, "Emulate requested");
-            //Allocate the About View.
-            app->view_about = view_alloc();
-            view_dispatcher_add_view(app->view_dispatcher, ProtoPirateViewAbout, app->view_about);
             scene_manager_next_scene(app->scene_manager, ProtoPirateSceneEmulate);
             consumed = true;
         }
@@ -285,4 +282,3 @@ void protopirate_scene_saved_info_on_exit(void* context) {
     FURI_LOG_I(TAG, "Exiting SavedInfo scene");
     widget_reset(app->widget);
 }
-#endif //ENABLE_SAVED_SCENE

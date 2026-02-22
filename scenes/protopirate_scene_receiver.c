@@ -1,6 +1,5 @@
 // scenes/protopirate_scene_receiver.c
 #include "../protopirate_app_i.h"
-#ifdef ENABLE_RECEIVER_SCENE
 #include "../helpers/protopirate_storage.h"
 #include "views/protopirate_receiver.h"
 #include <notification/notification_messages.h>
@@ -108,56 +107,44 @@ static void protopirate_scene_receiver_callback(
         protopirate_view_receiver_set_idx_menu(app->protopirate_receiver, last_index);
 
         // Auto-save if enabled
-        if(app->option_flags & FLAG_AUTO_SAVE) {
+        if(app->auto_save) {
             FlipperFormat* ff = protopirate_history_get_raw_data(
                 app->txrx->history, protopirate_history_get_item(app->txrx->history) - 1);
 
             if(ff) {
-                FuriString* saved_path = furi_string_alloc();
-                FuriString* file_name_str = furi_string_alloc();
-
-                if(app->option_flags & FLAG_DATETIME_FILENAMES) {
-                    //Get the date and time to save.
-                    DateTime date_time;
-                    furi_hal_rtc_get_datetime(&date_time);
-                    furi_string_printf(
-                        file_name_str,
-                        "%.2d%.2d%.2d_%.2d.%.2d.%.2d_",
-                        date_time.year,
-                        date_time.month,
-                        date_time.day,
-                        date_time.hour,
-                        date_time.minute,
-                        date_time.second);
+                FuriString* protocol = furi_string_alloc();
+                if(!protocol) {
+                    FURI_LOG_E(TAG, "protocol allocation failed");
+                    furi_string_free(str_buff);
+                    return;
                 }
 
-                // Extract protocol name
-                FuriString* protocol = furi_string_alloc();
                 flipper_format_rewind(ff);
                 if(!flipper_format_read_string(ff, "Protocol", protocol)) {
                     furi_string_set_str(protocol, "Unknown");
                 }
 
-                //Add the protocol
-                furi_string_cat(file_name_str, protocol);
-                furi_string_free(protocol);
-
                 // Clean protocol name for filename
-                furi_string_replace_all(file_name_str, "/", "_");
-                furi_string_replace_all(file_name_str, " ", "_");
+                furi_string_replace_all(protocol, "/", "_");
+                furi_string_replace_all(protocol, " ", "_");
+
+                FuriString* saved_path = furi_string_alloc();
+                if(!saved_path) {
+                    FURI_LOG_E(TAG, "saved_path allocation failed");
+                    furi_string_free(protocol);
+                    furi_string_free(str_buff);
+                    return;
+                }
 
                 if(protopirate_storage_save_capture(
-                       ff,
-                       furi_string_get_cstr(file_name_str),
-                       saved_path,
-                       (app->option_flags & FLAG_DATETIME_FILENAMES))) {
+                       ff, furi_string_get_cstr(protocol), saved_path)) {
                     FURI_LOG_I(TAG, "Auto-saved: %s", furi_string_get_cstr(saved_path));
                     notification_message(app->notifications, &sequence_double_vibro);
                 } else {
                     FURI_LOG_E(TAG, "Auto-save failed");
                 }
 
-                furi_string_free(file_name_str);
+                furi_string_free(protocol);
                 furi_string_free(saved_path);
             }
         }
@@ -193,11 +180,7 @@ void protopirate_scene_receiver_on_enter(void* context) {
     FURI_LOG_I(TAG, "Is External: %s", is_external ? "YES" : "NO");
     FURI_LOG_I(TAG, "Frequency: %lu Hz", app->txrx->preset->frequency);
     FURI_LOG_I(TAG, "Modulation: %s", furi_string_get_cstr(app->txrx->preset->name));
-    FURI_LOG_I(TAG, "Auto-save: %s", (settings->option_flags & FLAG_AUTO_SAVE) ? "ON" : "OFF");
-    FURI_LOG_I(
-        TAG,
-        "Date-Time Filenames: %s",
-        (settings->option_flags & FLAG_DATETiME_FILENAMES) ? "ON" : "OFF");
+    FURI_LOG_I(TAG, "Auto-save: %s", app->auto_save ? "ON" : "OFF");
 #endif
 
     // Allocate history
@@ -239,24 +222,13 @@ void protopirate_scene_receiver_on_enter(void* context) {
         app->txrx->hopper_state = ProtoPirateHopperStateRunning;
     }
 
-    //Forward declare preset now we have a branch path..
-    const char* preset_name;
-    uint8_t* preset_data;
+    // Get preset data
+    const char* preset_name = furi_string_get_cstr(app->txrx->preset->name);
+    uint8_t* preset_data = subghz_setting_get_preset_data_by_name(app->setting, preset_name);
 
-    //Have we got a model selected?
-    if(app->selected_model && app->selected_model->index && app->selected_model->preset &&
-       app->selected_model->preset->data_size) {
-        preset_name = furi_string_get_cstr(app->selected_model->preset->name);
-        preset_data = app->selected_model->preset->data;
-    } else {
-        // Get preset data
-        preset_name = furi_string_get_cstr(app->txrx->preset->name);
-        preset_data = subghz_setting_get_preset_data_by_name(app->setting, preset_name);
-
-        if(preset_data == NULL) {
-            FURI_LOG_E(TAG, "Failed to get preset data for %s, using AM650", preset_name);
-            preset_data = subghz_setting_get_preset_data_by_name(app->setting, "AM650");
-        }
+    if(preset_data == NULL) {
+        FURI_LOG_E(TAG, "Failed to get preset data for %s, using AM650", preset_name);
+        preset_data = subghz_setting_get_preset_data_by_name(app->setting, "AM650");
     }
 
     // Begin receiving
@@ -276,8 +248,7 @@ void protopirate_scene_receiver_on_enter(void* context) {
     protopirate_view_receiver_set_lock(app->protopirate_receiver, app->lock);
 
     // Update auto-save state in view
-    protopirate_view_receiver_set_autosave(
-        app->protopirate_receiver, (app->option_flags & FLAG_AUTO_SAVE));
+    protopirate_view_receiver_set_autosave(app->protopirate_receiver, app->auto_save);
 
     //Not in Sub Decode Mode
     protopirate_view_receiver_set_sub_decode_mode(app->protopirate_receiver, false);
@@ -410,4 +381,3 @@ void protopirate_scene_receiver_view_callback(ProtoPirateCustomEvent event, void
     ProtoPirateApp* app = context;
     view_dispatcher_send_custom_event(app->view_dispatcher, event);
 }
-#endif //ENABLE_RECEIVER_SCENE

@@ -70,7 +70,7 @@ const SubGhzProtocolEncoder subghz_protocol_subaru_encoder = {
     .yield = subghz_protocol_encoder_subaru_yield,
 };
 
-const SubGhzProtocol subghz_protocol_subaru = {
+const SubGhzProtocol subaru_protocol = {
     .name = SUBARU_PROTOCOL_NAME,
     .type = SubGhzProtocolTypeDynamic,
     .flag = SubGhzProtocolFlag_433 | SubGhzProtocolFlag_AM | SubGhzProtocolFlag_Decodable |
@@ -169,7 +169,7 @@ void* subghz_protocol_encoder_subaru_alloc(SubGhzEnvironment* environment) {
     UNUSED(environment);
     SubGhzProtocolEncoderSubaru* instance = malloc(sizeof(SubGhzProtocolEncoderSubaru));
 
-    instance->base.protocol = &subghz_protocol_subaru;
+    instance->base.protocol = &subaru_protocol;
     instance->generic.protocol_name = instance->base.protocol->name;
 
     instance->encoder.repeat = 10;
@@ -402,7 +402,7 @@ LevelDuration subghz_protocol_encoder_subaru_yield(void* context) {
 void* subghz_protocol_decoder_subaru_alloc(SubGhzEnvironment* environment) {
     UNUSED(environment);
     SubGhzProtocolDecoderSubaru* instance = malloc(sizeof(SubGhzProtocolDecoderSubaru));
-    instance->base.protocol = &subghz_protocol_subaru;
+    instance->base.protocol = &subaru_protocol;
     instance->generic.protocol_name = instance->base.protocol->name;
     return instance;
 }

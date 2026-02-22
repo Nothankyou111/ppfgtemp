@@ -15,7 +15,7 @@
 
 #define VAG_PROTOCOL_NAME "VAG"
 
-extern const SubGhzProtocol subghz_protocol_vag;
+extern const SubGhzProtocol vag_protocol;
 
 // Decoder functions
 void* subghz_protocol_decoder_vag_alloc(SubGhzEnvironment* environment);

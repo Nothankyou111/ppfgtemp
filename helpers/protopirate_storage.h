@@ -4,14 +4,8 @@
 #include <furi.h>
 #include <storage/storage.h>
 #include <flipper_format/flipper_format.h>
-#include <defines.h>
 
-#ifdef BUILD_MAIN_APP
-#define PROTOPIRATE_APP_FOLDER APP_DATA_PATH("saved")
-#else
-#define PROTOPIRATE_APP_FOLDER "/ext/apps_data/proto_pirate/saved"
-#endif
-
+#define PROTOPIRATE_APP_FOLDER       APP_DATA_PATH("saved")
 #define PROTOPIRATE_APP_EXTENSION    ".psf"
 #define PROTOPIRATE_APP_FILE_VERSION 1
 #define PROTOPIRATE_TEMP_FILE        APP_DATA_PATH("saved/.temp.psf")
@@ -87,8 +81,7 @@ bool protopirate_storage_init(void);
 bool protopirate_storage_save_capture(
     FlipperFormat* flipper_format,
     const char* protocol_name,
-    FuriString* out_path,
-    bool datetime_filenames);
+    FuriString* out_path);
 
 // Save to temp file for emulation
 bool protopirate_storage_save_temp(FlipperFormat* flipper_format);
@@ -97,10 +90,7 @@ bool protopirate_storage_save_temp(FlipperFormat* flipper_format);
 void protopirate_storage_delete_temp(void);
 
 // Get next available filename for a protocol
-bool protopirate_storage_get_next_filename(
-    const char* protocol_name,
-    FuriString* out_filename,
-    bool dont_add_zero);
+bool protopirate_storage_get_next_filename(const char* protocol_name, FuriString* out_filename);
 
 // Delete a file
 bool protopirate_storage_delete_file(const char* file_path);

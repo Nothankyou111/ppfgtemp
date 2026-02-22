@@ -14,7 +14,7 @@
 
 #define SUBARU_PROTOCOL_NAME "Subaru"
 
-extern const SubGhzProtocol subghz_protocol_subaru;
+extern const SubGhzProtocol subaru_protocol;
 
 // Decoder functions
 void* subghz_protocol_decoder_subaru_alloc(SubGhzEnvironment* environment);

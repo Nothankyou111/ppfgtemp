@@ -17,7 +17,7 @@
 typedef struct SubGhzProtocolDecoderPSA SubGhzProtocolDecoderPSA;
 typedef struct SubGhzProtocolEncoderPSA SubGhzProtocolEncoderPSA;
 
-extern const SubGhzProtocol subghz_protocol_psa;
+extern const SubGhzProtocol psa_protocol;
 
 // Decoder functions
 void* subghz_protocol_decoder_psa_alloc(SubGhzEnvironment* environment);

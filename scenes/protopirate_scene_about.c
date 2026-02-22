@@ -111,12 +111,7 @@ static void about_draw_callback(Canvas* canvas, void* context) {
     // Redraw header over mask
     canvas_set_color(canvas, ColorBlack);
     canvas_set_font(canvas, FontPrimary);
-
-#ifdef BUILD_MAIN_APP
-    canvas_draw_str(canvas, 0, 10, "ProtoPirate v" FAP_VERSION);
-#else
-    canvas_draw_str(canvas, 0, 10, "ProtoPirate Utilities v" FAP_VERSION);
-#endif
+    canvas_draw_str(canvas, x_off, 10, "ProtoPirate v" FAP_VERSION);
 
     canvas_set_font(canvas, FontKeyboard);
     if(g_state.frame % 8 < 4) {
@@ -195,10 +190,4 @@ void protopirate_scene_about_on_exit(void* context) {
 
     view_set_draw_callback(app->view_about, NULL);
     view_set_input_callback(app->view_about, NULL);
-
-    view_dispatcher_switch_to_view(app->view_dispatcher, ProtoPirateViewSubmenu);
-
-    //Remove About View.
-    view_dispatcher_remove_view(app->view_dispatcher, ProtoPirateViewAbout);
-    view_free(app->view_about);
 }

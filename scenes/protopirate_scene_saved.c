@@ -1,6 +1,5 @@
 // scenes/protopirate_scene_saved.c
 #include "../protopirate_app_i.h"
-#ifdef ENABLE_SAVED_SCENE
 
 #define TAG "ProtoPirateSceneSaved"
 
@@ -18,4 +17,3 @@ bool protopirate_scene_saved_on_event(void* context, SceneManagerEvent event) {
 void protopirate_scene_saved_on_exit(void* context) {
     UNUSED(context);
 }
-#endif //ENABLE_SAVED_SCENE

@@ -41,7 +41,7 @@ const uint8_t tx_power_value[TX_PRESET_VALUES_COUNT] = {
     0x0E, // -20dBm
     0x12, //-30dBm
 
-    //AM Power Values for 2nd PA Table Byte.
+    //AM Power Values for 1st PA Table Byte.
     0xC0, //12dBm
     0xCD, //7dBm
     0x86, //5dBm
@@ -377,9 +377,6 @@ static bool protopirate_emulate_input_callback(InputEvent* event, void* context)
 
 void protopirate_scene_emulate_on_enter(void* context) {
     ProtoPirateApp* app = context;
-
-    //Stop charging while using the radio.
-    furi_hal_power_suppress_charge_enter();
 
     if(emulate_context != NULL) {
         FURI_LOG_W(TAG, "Previous emulate context not freed, cleaning up");
@@ -800,15 +797,5 @@ void protopirate_scene_emulate_on_exit(void* context) {
     view_set_draw_callback(app->view_about, NULL);
     view_set_input_callback(app->view_about, NULL);
     view_set_context(app->view_about, NULL);
-
-    //Switch back to widget view.
-    view_dispatcher_switch_to_view(app->view_dispatcher, ProtoPirateViewWidget);
-
-    //Remove About View.
-    view_dispatcher_remove_view(app->view_dispatcher, ProtoPirateViewAbout);
-    view_free(app->view_about);
-
-    //Can Charge Battery Again
-    furi_hal_power_suppress_charge_exit();
 }
 #endif

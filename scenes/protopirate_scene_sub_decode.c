@@ -12,11 +12,7 @@
 #include <math.h>
 #include <lib/subghz/types.h>
 
-#ifdef BUILD_MAIN_APP
 #include "proto_pirate_icons.h"
-#else
-#include "proto_pirate_utils_icons.h"
-#endif
 
 #define TAG "ProtoPirateSubDecode"
 
@@ -545,23 +541,6 @@ bool protopirate_scene_sub_decode_on_event(void* context, SceneManagerEvent even
                 protopirate_history_get_raw_data(ctx->history, ctx->selected_history_index);
 
             if(ff) {
-                FuriString* saved_path = furi_string_alloc();
-                FuriString* file_name_str = furi_string_alloc();
-
-                if(app->option_flags & FLAG_DATETIME_FILENAMES) {
-                    //Get the date and time to save.
-                    DateTime date_time;
-                    furi_hal_rtc_get_datetime(&date_time);
-                    furi_string_printf(
-                        file_name_str,
-                        "%.2d%.2d%.2d_%.2d.%.2d.%.2d_",
-                        date_time.year,
-                        date_time.month,
-                        date_time.day,
-                        date_time.hour,
-                        date_time.minute,
-                        date_time.second);
-                }
                 // Extract protocol name
                 FuriString* protocol = furi_string_alloc();
                 flipper_format_rewind(ff);
@@ -569,25 +548,19 @@ bool protopirate_scene_sub_decode_on_event(void* context, SceneManagerEvent even
                     furi_string_set_str(protocol, "Unknown");
                 }
 
-                //Add the protocol
-                furi_string_cat(file_name_str, protocol);
-                furi_string_free(protocol);
-
                 // Clean protocol name for filename
-                furi_string_replace_all(file_name_str, "/", "_");
-                furi_string_replace_all(file_name_str, " ", "_");
+                furi_string_replace_all(protocol, "/", "_");
+                furi_string_replace_all(protocol, " ", "_");
 
+                FuriString* saved_path = furi_string_alloc();
                 if(protopirate_storage_save_capture(
-                       ff,
-                       furi_string_get_cstr(file_name_str),
-                       saved_path,
-                       (app->option_flags & FLAG_DATETIME_FILENAMES))) {
+                       ff, furi_string_get_cstr(protocol), saved_path)) {
                     notification_message(app->notifications, &sequence_success);
                 } else {
                     notification_message(app->notifications, &sequence_error);
                 }
 
-                furi_string_free(file_name_str);
+                furi_string_free(protocol);
                 furi_string_free(saved_path);
             } else {
                 FURI_LOG_E(
@@ -1161,11 +1134,6 @@ void protopirate_scene_sub_decode_on_exit(void* context) {
 
     view_set_draw_callback(app->view_about, NULL);
     view_set_input_callback(app->view_about, NULL);
-
-    //Remove About View.
-    view_dispatcher_remove_view(app->view_dispatcher, ProtoPirateViewAbout);
-    view_free(app->view_about);
-
     widget_reset(app->widget);
 
     protopirate_view_receiver_reset_menu(app->protopirate_receiver);
