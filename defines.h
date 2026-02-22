@@ -6,7 +6,7 @@
 #define ENABLE_EMULATE_FEATURE
 
 #define REMOVE_LOGS
-
+ 
 #ifdef REMOVE_LOGS
 // Undefine existing macros
 #undef FURI_LOG_E
