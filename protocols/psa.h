@@ -26,6 +26,8 @@ struct PsaBfState {
     volatile uint32_t progress_current;
     volatile uint32_t progress_total;
     volatile uint8_t status;
+    void (*on_done)(void* context);
+    void* on_done_ctx;
 
     uint32_t key1_low;
     uint32_t key1_high;

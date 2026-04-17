@@ -12,6 +12,18 @@ static void protopirate_scene_receiver_info_widget_callback(
     InputType type,
     void* context);
 
+static void protopirate_scene_receiver_info_text_input_callback(void* context) {
+    ProtoPirateApp* app = context;
+    view_dispatcher_send_custom_event(
+        app->view_dispatcher, ProtoPirateCustomEventReceiverInfoSaveConfirm);
+}
+
+static void psa_bf_done_cb_receiver_info(void* context) {
+    ProtoPirateApp* app = context;
+    view_dispatcher_send_custom_event(
+        app->view_dispatcher, ProtoPirateCustomEventPsaBruteforceComplete);
+}
+
 static bool psa_item_needs_bruteforce(ProtoPirateApp* app) {
     FlipperFormat* ff =
         protopirate_history_get_raw_data(app->txrx->history, app->txrx->idx_menu_chosen);
@@ -42,10 +54,11 @@ static void protopirate_receiver_info_show_bf_progress(ProtoPirateApp* app) {
     PsaBfState* s = app->psa_bf_state;
     uint32_t cur = s->progress_current;
     uint32_t total = s->progress_total;
-    uint8_t pct = total ? (uint8_t)((uint32_t)((uint64_t)cur * 100 / total)) : 0;
-    if(pct > 100) pct = 100;
+    uint32_t pct_tenths = total ? (uint32_t)((uint64_t)cur * 1000 / total) : 0;
+    if(pct_tenths > 1000) pct_tenths = 1000;
 
-    FuriString* pct_str = furi_string_alloc_printf("%u%%", pct);
+    FuriString* pct_str =
+        furi_string_alloc_printf("%lu.%u%%", pct_tenths / 10, (unsigned)(pct_tenths % 10));
     widget_add_string_element(
         app->widget, 62, 12, AlignLeft, AlignTop, FontSecondary, furi_string_get_cstr(pct_str));
     furi_string_free(pct_str);
@@ -58,18 +71,21 @@ static void protopirate_receiver_info_show_bf_progress(ProtoPirateApp* app) {
         PSA_BF_PROGRESS_BAR_H,
         2,
         false);
-    if(pct > 0) {
-        uint8_t fill_w = (PSA_BF_PROGRESS_BAR_W * (uint32_t)pct) / 100;
-        if(fill_w < 2) fill_w = 2;
-        widget_add_rect_element(
-            app->widget,
-            PSA_BF_PROGRESS_BAR_X + 1,
-            PSA_BF_PROGRESS_BAR_Y + 1,
-            fill_w - 1,
-            PSA_BF_PROGRESS_BAR_H - 2,
-            1,
-            true);
-    }
+    static uint16_t bf_ri_frame = 0;
+    bf_ri_frame++;
+    uint8_t inner_w = PSA_BF_PROGRESS_BAR_W - 4;
+    uint8_t block_w = 16;
+    uint8_t travel = inner_w - block_w;
+    uint16_t phase = (bf_ri_frame * 2) % (uint16_t)(2 * travel);
+    uint8_t block_x = (phase <= travel) ? (uint8_t)phase : (uint8_t)(2 * travel - phase);
+    widget_add_rect_element(
+        app->widget,
+        PSA_BF_PROGRESS_BAR_X + 2 + block_x,
+        PSA_BF_PROGRESS_BAR_Y + 2,
+        block_w,
+        PSA_BF_PROGRESS_BAR_H - 4,
+        0,
+        true);
 }
 
 static void protopirate_receiver_info_build_normal_widget(ProtoPirateApp* app) {
@@ -326,7 +342,8 @@ bool protopirate_scene_receiver_info_on_event(void* context, SceneManagerEvent e
 
     if(event.type == SceneManagerEventTypeTick) {
         if(app->psa_bf_thread && app->psa_bf_state) {
-            if(app->psa_bf_state->status == PSA_BF_STATUS_RUNNING) {
+            uint8_t bfst = app->psa_bf_state->status;
+            if(bfst == PSA_BF_STATUS_IDLE || bfst == PSA_BF_STATUS_RUNNING) {
                 protopirate_receiver_info_show_bf_progress(app);
                 consumed = true;
             } else {
@@ -338,6 +355,14 @@ bool protopirate_scene_receiver_info_on_event(void* context, SceneManagerEvent e
     }
 
     if(event.type == SceneManagerEventTypeCustom) {
+        if(event.event == ProtoPirateCustomEventPsaBruteforceComplete) {
+            if(app->psa_bf_state) {
+                psa_bf_finish_and_show_result(app);
+            }
+            consumed = true;
+            return consumed;
+        }
+
         if(event.event == ProtoPirateCustomEventReceiverInfoBruteforceStart) {
             FlipperFormat* ff =
                 protopirate_history_get_raw_data(app->txrx->history, app->txrx->idx_menu_chosen);
@@ -357,6 +382,8 @@ bool protopirate_scene_receiver_info_on_event(void* context, SceneManagerEvent e
                 consumed = true;
                 return consumed;
             }
+            state->on_done = psa_bf_done_cb_receiver_info;
+            state->on_done_ctx = app;
             app->psa_bf_state = state;
             app->psa_bf_thread = furi_thread_alloc_ex(
                 "PsaBf", 2048, psa_brute_force_thread_entry, state);
@@ -395,27 +422,98 @@ bool protopirate_scene_receiver_info_on_event(void* context, SceneManagerEvent e
             FlipperFormat* ff =
                 protopirate_history_get_raw_data(app->txrx->history, app->txrx->idx_menu_chosen);
             if(ff) {
+                // Read protocol name for default filename
                 FuriString* protocol = furi_string_alloc();
                 flipper_format_rewind(ff);
                 if(!flipper_format_read_string(ff, "Protocol", protocol)) {
                     furi_string_set_str(protocol, "Unknown");
                 }
-                FuriString* saved_path = furi_string_alloc();
-                if(protopirate_storage_save_capture(
-                       ff, furi_string_get_cstr(protocol), saved_path)) {
+
+                // Clean protocol name for filename
+                furi_string_replace_all(protocol, "/", "_");
+                furi_string_replace_all(protocol, " ", "_");
+
+                // Get the next auto-generated filename (just the name part)
+                FuriString* auto_path = furi_string_alloc();
+                if(protopirate_storage_get_next_filename(
+                       furi_string_get_cstr(protocol), auto_path)) {
+                    // Extract just the filename without folder and extension
+                    const char* full = furi_string_get_cstr(auto_path);
+                    const char* slash = strrchr(full, '/');
+                    const char* name_start = slash ? slash + 1 : full;
+
+                    // Copy without extension
+                    size_t name_len = strlen(name_start);
+                    const char* dot = strrchr(name_start, '.');
+                    if(dot) name_len = dot - name_start;
+                    if(name_len >= sizeof(app->save_filename))
+                        name_len = sizeof(app->save_filename) - 1;
+
+                    memcpy(app->save_filename, name_start, name_len);
+                    app->save_filename[name_len] = '\0';
+                } else {
+                    snprintf(app->save_filename, sizeof(app->save_filename), "capture");
+                }
+                furi_string_free(auto_path);
+
+                // Store context for when text input confirms
+                if(app->save_protocol) furi_string_free(app->save_protocol);
+                app->save_protocol = protocol; // transfer ownership
+                app->save_history_idx = app->txrx->idx_menu_chosen;
+                app->save_from_saved_info = false;
+
+                // Configure and show text input
+                text_input_reset(app->text_input);
+                text_input_set_header_text(app->text_input, "Save filename:");
+                text_input_set_result_callback(
+                    app->text_input,
+                    protopirate_scene_receiver_info_text_input_callback,
+                    app,
+                    app->save_filename,
+                    sizeof(app->save_filename),
+                    false); // don't clear default text
+
+                view_dispatcher_switch_to_view(app->view_dispatcher, ProtoPirateViewTextInput);
+            }
+            consumed = true;
+        }
+
+        if(event.event == ProtoPirateCustomEventReceiverInfoSaveConfirm) {
+            // User confirmed the filename in text input
+            FlipperFormat* ff =
+                protopirate_history_get_raw_data(app->txrx->history, app->save_history_idx);
+            if(ff) {
+                // Build full path: folder/filename.psf
+                FuriString* save_path = furi_string_alloc_printf(
+                    "%s/%s%s",
+                    PROTOPIRATE_APP_FOLDER,
+                    app->save_filename,
+                    PROTOPIRATE_APP_EXTENSION);
+
+                if(protopirate_storage_save_capture_to_path(
+                       ff, furi_string_get_cstr(save_path))) {
                     notification_message(app->notifications, &sequence_success);
-                    FURI_LOG_I(TAG, "Saved to: %s", furi_string_get_cstr(saved_path));
+                    FURI_LOG_I(TAG, "Saved to: %s", furi_string_get_cstr(save_path));
                 } else {
                     notification_message(app->notifications, &sequence_error);
                     FURI_LOG_E(TAG, "Save failed");
                 }
-                furi_string_free(protocol);
-                furi_string_free(saved_path);
+                furi_string_free(save_path);
             }
+
+            // Clean up save protocol string
+            if(app->save_protocol) {
+                furi_string_free(app->save_protocol);
+                app->save_protocol = NULL;
+            }
+
+            // Return to the receiver info widget
+            view_dispatcher_switch_to_view(app->view_dispatcher, ProtoPirateViewWidget);
             consumed = true;
         }
+
 #ifdef ENABLE_EMULATE_FEATURE
-        else if(event.event == ProtoPirateCustomEventReceiverInfoEmulate && !is_emu_off) {
+        if(event.event == ProtoPirateCustomEventReceiverInfoEmulate && !is_emu_off) {
             FlipperFormat* ff =
                 protopirate_history_get_raw_data(app->txrx->history, app->txrx->idx_menu_chosen);
             if(ff) {

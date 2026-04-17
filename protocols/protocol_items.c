@@ -11,11 +11,16 @@ const SubGhzProtocol* protopirate_protocol_registry_items[] = {
     &kia_protocol_v6, // Heap: free 18296
     &ford_protocol_v0, // Heap: free 19456
     &fiat_protocol_v0, // Heap: free 16864
+    &fiat_v1_protocol,
+    &mazda_v0_protocol,
+    &kia_protocol_v7,
+    &mitsubishi_v0_protocol,
+    &porsche_touareg_protocol,
     &subaru_protocol, // Heap: free 17280
-    &suzuki_protocol, // Heap: free 16064
     &vag_protocol, // Heap: free 29352
     &subghz_protocol_star_line, // Heap: free 18632
     &psa_protocol, // Heap: free 25408
+    &honda_static_protocol,
 };
 // TODO: See above
 // Current HEAP situation:
@@ -33,7 +38,15 @@ const SubGhzProtocolRegistry protopirate_protocol_registry = {
 
 // Protocol timing definitions - mirrors the SubGhzBlockConst in each protocol
 static const ProtoPirateProtocolTiming protocol_timings[] = {
-    // Kia V0: PWM encoding, 250/500µs
+    // Honda Static
+    {
+        .name = HONDA_STATIC_PROTOCOL_NAME,
+        .te_short = 63,
+        .te_long = 700,
+        .te_delta = 120,
+        .min_count_bit = 64,
+    },
+    // Kia V0: PWM 250/500µs — Kia 61bit, Suzuki 64bit, Honda V0 72bit
     {
         .name = "Kia V0",
         .te_short = 250,
@@ -81,6 +94,14 @@ static const ProtoPirateProtocolTiming protocol_timings[] = {
         .te_delta = 100,
         .min_count_bit = 144,
     },
+    // Kia V7: Manchester 250/500µs
+    {
+        .name = KIA_PROTOCOL_V7_NAME,
+        .te_short = 250,
+        .te_long = 500,
+        .te_delta = 100,
+        .min_count_bit = 64,
+    },
     // Ford V0: Manchester 250/500µs
     {
         .name = "Ford V0",
@@ -97,20 +118,44 @@ static const ProtoPirateProtocolTiming protocol_timings[] = {
         .te_delta = 100,
         .min_count_bit = 64,
     },
+    // Fiat V1: Manchester dynamic (baseline Type A 260/520us)
+    {
+        .name = "Fiat V1",
+        .te_short = 260,
+        .te_long = 520,
+        .te_delta = 80,
+        .min_count_bit = 80,
+    },
+    // Mazda V0: 250/500us
+    {
+        .name = "Mazda V0",
+        .te_short = 250,
+        .te_long = 500,
+        .te_delta = 100,
+        .min_count_bit = 64,
+    },
+    // Mitsubishi V0: 250/500us
+    {
+        .name = "Mitsubishi V0",
+        .te_short = 250,
+        .te_long = 500,
+        .te_delta = 100,
+        .min_count_bit = 80,
+    },
+    // Porsche Touareg: 1680/3370us
+    {
+        .name = "Porsche Touareg",
+        .te_short = 1680,
+        .te_long = 3370,
+        .te_delta = 500,
+        .min_count_bit = 64,
+    },
     // Subaru: PPM 800/1600µs
     {
         .name = "Subaru",
         .te_short = 800,
         .te_long = 1600,
         .te_delta = 200,
-        .min_count_bit = 64,
-    },
-    // Suzuki: PWM 250/500µs
-    {
-        .name = "Suzuki",
-        .te_short = 250,
-        .te_long = 500,
-        .te_delta = 100,
         .min_count_bit = 64,
     },
     // VW: Manchester 500/1000µs
@@ -163,8 +208,7 @@ const ProtoPirateProtocolTiming* protopirate_get_protocol_timing(const char* pro
     // Try partial matching for version variants
     for(size_t i = 0; i < protocol_timings_count; i++) {
         // Match "Kia" protocols
-        if(strstr(protocol_name, "Kia") != NULL || strstr(protocol_name, "KIA") != NULL ||
-           strstr(protocol_name, "HYU") != NULL) {
+        if(strstr(protocol_name, "Kia") != NULL || strstr(protocol_name, "KIA") != NULL) {
             // Try to match version number
             if(strstr(protocol_name, "V0") != NULL &&
                strstr(protocol_timings[i].name, "V0") != NULL) {
@@ -184,6 +228,10 @@ const ProtoPirateProtocolTiming* protopirate_get_protocol_timing(const char* pro
             }
             if(strstr(protocol_name, "V5") != NULL &&
                strstr(protocol_timings[i].name, "V5") != NULL) {
+                return &protocol_timings[i];
+            }
+            if(strstr(protocol_name, "V7") != NULL &&
+               strstr(protocol_timings[i].name, "V7") != NULL) {
                 return &protocol_timings[i];
             }
         }
@@ -206,9 +254,15 @@ const ProtoPirateProtocolTiming* protopirate_get_protocol_timing(const char* pro
             return &protocol_timings[i];
         }
 
-        // Match Suzuki
+        // Suzuki merged into Kia V0
         if(strstr(protocol_name, "Suzuki") != NULL &&
-           strstr(protocol_timings[i].name, "Suzuki") != NULL) {
+           strstr(protocol_timings[i].name, "Kia V0") != NULL) {
+            return &protocol_timings[i];
+        }
+
+        // Honda V0 (Type 3)
+        if(strstr(protocol_name, "Honda V0") != NULL &&
+           strstr(protocol_timings[i].name, "Kia V0") != NULL) {
             return &protocol_timings[i];
         }
 

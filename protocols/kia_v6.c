@@ -229,6 +229,7 @@ static void aes_addroundkey(uint8_t* state, const uint8_t* round_key) {
     }
 }
 
+#ifdef ENABLE_EMULATE_FEATURE
 static void aes_subbytes(uint8_t* state) {
     for(int row = 0; row < 4; row++) {
         for(int col = 0; col < 4; col++) {
@@ -286,6 +287,7 @@ static void aes128_encrypt(const uint8_t* expanded_key, uint8_t* data) {
     aes_addroundkey(state, &expanded_key[160]);
     memcpy(data, state, 16);
 }
+#endif // ENABLE_EMULATE_FEATURE
 
 static void aes_key_expansion(const uint8_t* key, uint8_t* round_keys) {
     for(int i = 0; i < 16; i++) {
@@ -370,6 +372,7 @@ static void get_kia_v6_aes_key(uint8_t* aes_key) {
     }
 }
 
+#ifdef ENABLE_EMULATE_FEATURE
 static void kia_v6_encrypt_payload(
     uint8_t fx_field,
     uint32_t serial,
@@ -412,6 +415,7 @@ static void kia_v6_encrypt_payload(
                      ((uint32_t)plain[12] << 8) | plain[13];
     *out_part3 = ((uint16_t)plain[14] << 8) | plain[15];
 }
+#endif
 
 static bool kia_v6_decrypt(SubGhzProtocolDecoderKiaV6* instance) {
     uint8_t encrypted_data[16];

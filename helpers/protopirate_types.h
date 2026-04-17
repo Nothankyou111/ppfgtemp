@@ -12,6 +12,7 @@ typedef enum {
     ProtoPirateViewReceiverInfo,
     ProtoPirateViewAbout,
     ProtoPirateViewFileBrowser,
+    ProtoPirateViewTextInput,
 } ProtoPirateView;
 
 typedef enum {
@@ -25,6 +26,7 @@ typedef enum {
     ProtoPirateCustomEventSceneSettingLock,
     // File management
     ProtoPirateCustomEventReceiverInfoSave,
+    ProtoPirateCustomEventReceiverInfoSaveConfirm,
     ProtoPirateCustomEventReceiverInfoEmulate,
     ProtoPirateCustomEventReceiverInfoBruteforceStart,
     ProtoPirateCustomEventReceiverInfoBruteforceCancel,
@@ -37,8 +39,13 @@ typedef enum {
     // Sub decode
     ProtoPirateCustomEventSubDecodeUpdate,
     ProtoPirateCustomEventSubDecodeSave,
+    ProtoPirateCustomEventSubDecodeBruteforceStart,
+    ProtoPirateCustomEventPsaBruteforceComplete,
     // File Browser
     ProtoPirateCustomEventSavedFileSelected,
+    // Need saving confirmation
+    ProtoPirateCustomEventSceneStay,
+    ProtoPirateCustomEventSceneExit,
 } ProtoPirateCustomEvent;
 
 typedef enum {

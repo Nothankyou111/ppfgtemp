@@ -3,6 +3,7 @@
 #include "../helpers/protopirate_storage.h"
 #include "views/protopirate_receiver.h"
 #include <notification/notification_messages.h>
+#include "proto_pirate_icons.h"
 
 #define TAG                             "ProtoPirateSceneRx"
 #define PROTOPIRATE_DISPLAY_HISTORY_MAX 20 // Reduced from 50 to save memory
@@ -257,6 +258,18 @@ void protopirate_scene_receiver_on_enter(void* context) {
     view_dispatcher_switch_to_view(app->view_dispatcher, ProtoPirateViewReceiver);
 }
 
+static void protopirate_scene_receiver_handle_back(ProtoPirateApp* app) {
+    if(app->txrx->history &&
+       protopirate_history_get_item(app->txrx->history) > 0 && !app->auto_save) {
+        scene_manager_set_scene_state(
+            app->scene_manager, ProtoPirateSceneReceiver, 1);
+        scene_manager_next_scene(app->scene_manager, ProtoPirateSceneNeedSaving);
+    } else {
+        scene_manager_search_and_switch_to_previous_scene(
+            app->scene_manager, ProtoPirateSceneStart);
+    }
+}
+
 bool protopirate_scene_receiver_on_event(void* context, SceneManagerEvent event) {
     furi_check(context);
     ProtoPirateApp* app = context;
@@ -288,12 +301,7 @@ bool protopirate_scene_receiver_on_event(void* context, SceneManagerEvent event)
             break;
 
         case ProtoPirateCustomEventViewReceiverBack:
-            if(app->txrx->txrx_state == ProtoPirateTxRxStateRx) {
-                protopirate_rx_end(app);
-            }
-            protopirate_sleep(app);
-            scene_manager_search_and_switch_to_previous_scene(
-                app->scene_manager, ProtoPirateSceneStart);
+            protopirate_scene_receiver_handle_back(app);
             consumed = true;
             break;
 
@@ -361,7 +369,9 @@ void protopirate_scene_receiver_on_exit(void* context) {
         return;
     }
 
-    // Reset both view menu AND history when actually leaving (only if radio initialized)
+    // Full teardown: put radio to sleep, free worker and history
+    protopirate_sleep(app);
+
     protopirate_view_receiver_reset_menu(app->protopirate_receiver);
     if(app->radio_initialized && app->txrx->history) {
         protopirate_history_reset(app->txrx->history);

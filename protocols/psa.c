@@ -175,7 +175,9 @@ static void psa_setup_byte_buffer(
     uint32_t key2_low);
 static void psa_calculate_checksum(uint8_t* buffer);
 static uint8_t psa_calculate_tea_crc(uint32_t v0, uint32_t v1);
+#ifdef ENABLE_EMULATE_FEATURE
 static void psa_tea_encrypt(uint32_t* v0, uint32_t* v1, const uint32_t* key);
+#endif
 static void psa_unpack_tea_result_to_buffer(uint8_t* buffer, uint32_t v0, uint32_t v1);
 static bool parse_hex_key_str(const char* str, uint64_t* out);
 
@@ -853,6 +855,7 @@ static void psa_second_stage_xor_decrypt(uint8_t* buffer) {
     buffer[7] = temp[6] ^ temp[4] ^ temp[5];
 }
 
+#ifdef ENABLE_EMULATE_FEATURE
 static void psa_tea_encrypt(uint32_t* v0, uint32_t* v1, const uint32_t* key) {
     uint32_t sum = 0;
     for(int i = 0; i < TEA_ROUNDS; i++) {
@@ -865,6 +868,7 @@ static void psa_tea_encrypt(uint32_t* v0, uint32_t* v1, const uint32_t* key) {
         *v1 = *v1 + (temp ^ (((*v0 >> 5) ^ (*v0 << 4)) + *v0));
     }
 }
+#endif
 
 static inline void psa_tea_decrypt(uint32_t* v0, uint32_t* v1, const uint32_t* key) {
     uint32_t sum = TEA_DELTA * TEA_ROUNDS;
@@ -1028,7 +1032,7 @@ static void psa_fill_bf_state_from_buffer(PsaBfState* state, uint8_t* buffer) {
     state->decrypted_type = 0x36;
 }
 
-#define PSA_BF_PROGRESS_INTERVAL 65536U
+#define PSA_BF_PROGRESS_INTERVAL 4096U
 
 void psa_brute_force_run(PsaBfState* state) {
     uint8_t buffer[48] = {0};
@@ -1126,6 +1130,10 @@ void psa_brute_force_run(PsaBfState* state) {
 int32_t psa_brute_force_thread_entry(void* arg) {
     PsaBfState* state = arg;
     psa_brute_force_run(state);
+
+    if(state->on_done) {
+        state->on_done(state->on_done_ctx);
+    }
     return 0;
 }
 
@@ -1168,6 +1176,8 @@ bool psa_bf_state_from_flipper_format(PsaBfState* state, FlipperFormat* ff) {
         state->progress_current = 0;
         state->progress_total = 0;
         state->status = PSA_BF_STATUS_IDLE;
+        state->on_done = NULL;
+        state->on_done_ctx = NULL;
         ok = true;
     } while(false);
     furi_string_free(temp);

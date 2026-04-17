@@ -100,10 +100,65 @@ static void emulate_context_free(void) {
     emulate_context = NULL;
 }
 
-static uint8_t
-    protopirate_get_button_for_protocol(const char* protocol, InputKey key, uint8_t original) {
-    // Kia/Hyundai (all versions)
+static uint8_t protopirate_get_button_for_protocol(
+    const char* protocol,
+    InputKey key,
+    uint8_t original,
+    FlipperFormat* ff) {
+    // Kia V7
+    if(strcmp(protocol, KIA_PROTOCOL_V7_NAME) == 0) {
+        switch(key) {
+        case InputKeyUp:
+            return 0x01; // Lock
+        case InputKeyOk:
+            return 0x02; // Unlock
+        case InputKeyDown:
+            return 0x03; // Trunk
+        case InputKeyRight:
+            return 0x08; // Panic
+        default:
+            return original;
+        }
+    }
+    // Kia V0 (Type 1=Kia, 2=Suzuki, 3=Honda V0)
     if(strstr(protocol, "Kia")) {
+        uint32_t kia_v0_type = 1;
+        if(ff) {
+            flipper_format_rewind(ff);
+            flipper_format_read_uint32(ff, "Type", &kia_v0_type, 1);
+        }
+        if(kia_v0_type == 2) {
+            switch(key) {
+            case InputKeyUp:
+                return 0x3; // Lock
+            case InputKeyOk:
+                return 0x4; // Unlock
+            case InputKeyDown:
+                return 0x2; // Boot
+            case InputKeyLeft:
+                return 0x1; // Panic
+            case InputKeyRight:
+                return original;
+            default:
+                return original;
+            }
+        }
+        if(kia_v0_type == 3) {
+            switch(key) {
+            case InputKeyUp:
+                return 1;
+            case InputKeyOk:
+                return 2;
+            case InputKeyDown:
+                return 3;
+            case InputKeyLeft:
+                return 4;
+            case InputKeyRight:
+                return 5;
+            default:
+                return original;
+            }
+        }
         switch(key) {
         case InputKeyUp:
             return 0x1; // Lock
@@ -148,19 +203,34 @@ static uint8_t
             return original;
         }
     }
-    // Suzuki
-    else if(strstr(protocol, "Suzuki")) {
+    // Honda Static
+    else if(strstr(protocol, "Honda Static")) {
         switch(key) {
         case InputKeyUp:
-            return 0x3; // Lock
+            return 0x1; // Lock
         case InputKeyOk:
-            return 0x4; // Unlock
+            return 0x2; // Unlock
         case InputKeyDown:
-            return 0x2; // Boot
-        case InputKeyLeft:
-            return 0x1; // Panic
+            return 0x4; // Trunk
         case InputKeyRight:
+            return 0x5; // Remote Start
+        case InputKeyLeft:
+            return 0x8; // Panic
+        default:
             return original;
+        }
+    }
+    // Mazda V0
+    else if(strstr(protocol, "Mazda")) {
+        switch(key) {
+        case InputKeyUp:
+            return 0x01; // Lock
+        case InputKeyOk:
+            return 0x02; // Unlock
+        case InputKeyDown:
+            return 0x04; // Trunk
+        case InputKeyRight:
+            return 0x08; // Remote
         default:
             return original;
         }
@@ -168,16 +238,16 @@ static uint8_t
     // Ford - (needs testing)
     else if(strstr(protocol, "Ford")) {
         switch(key) {
-        case InputKeyUp:
-            return 0x1; // Lock?
-        case InputKeyOk:
-            return 0x2; // Unlock?
-        case InputKeyDown:
-            return 0x4; // Boot?
         case InputKeyLeft:
-            return 0x8; // Panic?
+            return 0x1; // Panic
+        case InputKeyUp:
+            return 0x2; // Lock
+        case InputKeyOk:
+            return 0x4; // Unlock
+        case InputKeyDown:
+            return 0x8; // Boot
         case InputKeyRight:
-            return 0x3; // ?
+            return 0x10; // There is no 10 (Unless other vehicles?)
         default:
             return original;
         }
@@ -350,7 +420,10 @@ static bool protopirate_emulate_input_callback(InputEvent* event, void* context)
 
         // Get button mapping for this key
         uint8_t button = protopirate_get_button_for_protocol(
-            furi_string_get_cstr(ctx->protocol_name), event->key, ctx->original_button);
+            furi_string_get_cstr(ctx->protocol_name),
+            event->key,
+            ctx->original_button,
+            ctx->flipper_format);
 
         // Update data with new button and counter
         ctx->current_counter++;
@@ -464,6 +537,17 @@ void protopirate_scene_emulate_on_enter(void* context) {
                emulate_context->flipper_format, "Protocol", emulate_context->protocol_name)) {
             FURI_LOG_E(TAG, "Failed to read protocol name");
             furi_string_set(emulate_context->protocol_name, "Unknown");
+        }
+
+        // Standalone Suzuki captures: merged into Kia V0 Type 2
+        if(furi_string_equal(emulate_context->protocol_name, "Suzuki")) {
+            uint32_t type_suzuki = 2;
+            furi_string_set(emulate_context->protocol_name, KIA_PROTOCOL_V0_NAME);
+            flipper_format_rewind(emulate_context->flipper_format);
+            flipper_format_insert_or_update_string_cstr(
+                emulate_context->flipper_format, "Protocol", KIA_PROTOCOL_V0_NAME);
+            flipper_format_insert_or_update_uint32(
+                emulate_context->flipper_format, "Type", &type_suzuki, 1);
         }
 
         // Read serial
@@ -735,7 +819,14 @@ bool protopirate_scene_emulate_on_event(void* context, SceneManagerEvent event) 
                 emulate_context->is_transmitting = false;
                 emulate_context->flag_stop_called = false;
             }
-            scene_manager_previous_scene(app->scene_manager);
+
+            //If we came in from emulate, exit the app, otherwise go back to Saved or Received Info
+            if(scene_manager_has_previous_scene(app->scene_manager, ProtoPirateSceneStart))
+                scene_manager_previous_scene(app->scene_manager);
+            else {
+                scene_manager_stop(app->scene_manager);
+                view_dispatcher_stop(app->view_dispatcher);
+            }
             consumed = true;
             break;
         }
